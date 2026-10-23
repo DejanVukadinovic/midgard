@@ -168,6 +168,12 @@ func (v *Verifier) Verify(token string) (*Claims, error) {
 			}
 		}
 	}
+	// ID tokens must never be accepted as access tokens (ZITADEL signs both with typ JWT).
+	for _, k := range []string{"nonce", "at_hash", "amr", "auth_time"} {
+		if _, ok := raw[k]; ok {
+			return nil, errors.New("id token presented as access token")
+		}
+	}
 	okIss := false
 	for _, i := range v.Issuers {
 		okIss = okIss || i == c.Issuer

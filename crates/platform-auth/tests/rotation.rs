@@ -63,6 +63,7 @@ async fn verifier_picks_up_rotated_keys() {
             audience: "aud".into(),
             leeway_secs: 5,
             max_lifetime_secs: 3600,
+            accept_plain_jwt_typ: false,
         },
         Arc::new(JwksCache::new(
             url,

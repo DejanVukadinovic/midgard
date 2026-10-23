@@ -46,6 +46,7 @@ async fn main() -> anyhow::Result<()> {
             audience: var("CAPABILITY_AUDIENCE").unwrap_or_else(|| "platform.example".into()),
             leeway_secs: 30,
             max_lifetime_secs: 3600,
+            accept_plain_jwt_typ: var("CAPABILITY_ACCEPT_JWT_TYP").as_deref() == Some("true"),
         },
         &jwks,
     );

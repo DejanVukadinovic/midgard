@@ -9,6 +9,8 @@ pub struct Config {
     pub jwks_url: String,
     pub audience: String,
     pub token_max_lifetime_secs: u64,
+    /// PLATFORM_ACCEPT_JWT_TYP=true: accept `typ: JWT` access tokens (ZITADEL).
+    pub accept_plain_jwt_typ: bool,
     pub operator_subjects: Vec<String>,
     /// subject -> allowed namespace prefixes (empty = any namespace)
     pub publishers: BTreeMap<String, Vec<String>>,
@@ -96,6 +98,7 @@ impl Config {
             jwks_url,
             audience: var("PLATFORM_AUDIENCE").unwrap_or_else(|| "midgard-core".into()),
             token_max_lifetime_secs: num("PLATFORM_TOKEN_MAX_LIFETIME_SECONDS", 3600)?,
+            accept_plain_jwt_typ: var("PLATFORM_ACCEPT_JWT_TYP").as_deref() == Some("true"),
             operator_subjects: list("PLATFORM_OPERATOR_SUBJECTS"),
             publishers,
             provisioner,

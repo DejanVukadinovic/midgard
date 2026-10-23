@@ -9,15 +9,17 @@
 source "$(dirname "$0")/../../scripts/lib.sh"
 need curl jq
 ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
-: "${PROVIDER_URL:?}" "${ECHO_BIN:?}" "${CONTRACT_TOOL:?}" "${OPERATOR_CLIENT_SECRET:?}" "${PUBLISHER_CLIENT_SECRET:?}"
+: "${PROVIDER_URL:?}" "${ECHO_BIN:?}" "${CONTRACT_TOOL:?}"
+: "${OPERATOR_CLIENT_SECRET:=$(csecret midgard-operator)}" "${PUBLISHER_CLIENT_SECRET:=$(csecret midgard-publisher)}"
+OBR_SECRET="$(csecret obroklik-backend)"; FLEET_SECRET="$(csecret fleet-backend)"
 export CONTRACT_TOOL REPO_ROOT="$ROOT"
 PASS=0
 ok() { PASS=$((PASS + 1)); log "PASS  $*"; }
 RUN="$(date +%s)-$$"
 
-export ECHO_CORE_URL="$PLATFORM_URL" ECHO_TOKEN_URL="$IDP_TOKEN_URL" ECHO_NATS_URL="${ECHO_NATS_URL:?}"
-obroklik() { ECHO_CLIENT_ID=obroklik-backend ECHO_CLIENT_SECRET=dev-only-obroklik ECHO_APP=obroklik ECHO_NATS_USER=client-obroklik ECHO_NATS_PASSWORD="${NATS_PW_OVERRIDE:-${NATS_CLIENT_PASSWORD:?}}" "$ECHO_BIN" client "$@"; }
-fleet()    { ECHO_CLIENT_ID=fleet-backend ECHO_CLIENT_SECRET=dev-only-fleet ECHO_APP=fleet ECHO_NATS_USER=client-obroklik ECHO_NATS_PASSWORD="${NATS_CLIENT_PASSWORD:?}" "$ECHO_BIN" client "$@"; }
+export ECHO_CORE_AUDIENCE="$PLATFORM_AUDIENCE" ECHO_PROVIDER_AUDIENCE="$ECHO_AUDIENCE" ECHO_CORE_URL="$PLATFORM_URL" ECHO_TOKEN_URL="$IDP_TOKEN_URL" ECHO_NATS_URL="${ECHO_NATS_URL:?}"
+obroklik() { ECHO_CLIENT_ID=obroklik-backend ECHO_CLIENT_SECRET="$OBR_SECRET" ECHO_APP=obroklik ECHO_NATS_USER=client-obroklik ECHO_NATS_PASSWORD="${NATS_PW_OVERRIDE:-${NATS_CLIENT_PASSWORD:?}}" "$ECHO_BIN" client "$@"; }
+fleet()    { ECHO_CLIENT_ID=fleet-backend ECHO_CLIENT_SECRET="$FLEET_SECRET" ECHO_APP=fleet ECHO_NATS_USER=client-obroklik ECHO_NATS_PASSWORD="${NATS_CLIENT_PASSWORD:?}" "$ECHO_BIN" client "$@"; }
 rc() { set +e; "$@" >/tmp/v02-out.$$ 2>&1; local r=$?; set -e; cat /tmp/v02-out.$$ >&2; echo "$r"; }
 processed() { curl -fsS "$PROVIDER_URL/debug/processed"; }
 wait_processed() { # wait_processed <desc> [jq args...] <jq filter>
@@ -25,7 +27,6 @@ wait_processed() { # wait_processed <desc> [jq args...] <jq filter>
   for _ in $(seq 1 40); do processed | jq -e "$@" >/dev/null 2>&1 && return 0; sleep 0.5; done
   die "$desc (state: $(processed))"
 }
-user_token() { curl -fsS -H 'Content-Type: application/json' -d "$(jq -nc --arg u "$1" --arg c "$2" --arg a "$3" '{user:$u,client_id:$c,audience:[$a]}')" "$IDP_URL/dev/user-token" | jq -er .access_token; }
 
 log "== CON/COMPOSE: v0.2 bootstrap twice; reruns must not duplicate records"
 "$ROOT/scripts/bootstrap-v02.sh"
@@ -60,21 +61,21 @@ ok "HTTP path"
 
 log "== IAM: ungranted app denied at resolution and by the provider even with a valid audience token"
 [[ "$(rc fleet resolve)" == 3 ]] || die "fleet resolve must be denied"
-FT="$(ECHO_CLIENT_ID=fleet-backend; token fleet-backend dev-only-fleet example.echo)"
+FT="$(token fleet-backend "$FLEET_SECRET" "$ECHO_AUDIENCE")"
 code="$(curl -sS -o /dev/null -w '%{http_code}' -H "Authorization: Bearer $FT" -H 'Content-Type: application/json' -d '{"id":"f1","value":"x"}' "$PROVIDER_URL/submit")"
 [[ "$code" == 403 ]] || die "provider must refuse the ungranted app (403), got $code"
 code="$(curl -sS -o /dev/null -w '%{http_code}' -H 'Content-Type: application/json' -d '{"id":"f1","value":"x"}' "$PROVIDER_URL/submit")"
 [[ "$code" == 401 ]] || die "unauthenticated call must be 401, got $code"
-OBT_CORE="$(token obroklik-backend dev-only-obroklik)"   # wrong audience for the provider
+OBT_CORE="$(token obroklik-backend "$OBR_SECRET")"   # wrong audience for the provider
 code="$(curl -sS -o /dev/null -w '%{http_code}' -H "Authorization: Bearer $OBT_CORE" -H 'Content-Type: application/json' -d '{"id":"f1","value":"x"}' "$PROVIDER_URL/submit")"
 [[ "$code" == 401 ]] || die "wrong-audience token must be 401, got $code"
 ok "provider-side enforcement"
 
 log "== IAM: tenant context only from verified user tokens; cross-tenant denied at the provider"
 ALICE="$(user_token alice obroklik-web prj-obroklik)"
-obroklik submit-http --id "t-$RUN" --user-token "$ALICE" --organization org-acme >/dev/null
+obroklik submit-http --id "t-$RUN" --user-token "$ALICE" --organization "$ORG_A" >/dev/null
 wait_processed "delegated submission has no tenant" --arg i "t-$RUN" '[.items[]|select(.id==$i and (.tenant|length)>0)]|length==1'
-[[ "$(rc obroklik submit-http --id "x-$RUN" --user-token "$ALICE" --organization org-globex)" == 3 ]] || die "alice must not act in org-globex"
+[[ "$(rc obroklik submit-http --id "x-$RUN" --user-token "$ALICE" --organization "$ORG_B")" == 3 ]] || die "alice must not act in org-globex"
 ok "delegated user + tenant enforcement"
 
 log "== MQ: publish -> durable consume -> idempotent (dedupe by message id)"
@@ -104,7 +105,7 @@ OBR="$(body_of "$(api GET /v0/applications "$OP" "")" | jq -r '.items[]|select(.
 gid="$(body_of "$(api GET "/v0/applications/$OBR/contract-grants" "$OP" "")" | jq -r '.items[]|select(.contract=="example.echo.submit" and .status=="active").id')"
 expect '200|204' "$(api DELETE "/v0/applications/$OBR/contract-grants/$gid" "$OP" "")" "revoke"
 [[ "$(rc obroklik resolve)" == 3 ]] || die "resolution must fail after revoke"
-OBT_PROV="$(token obroklik-backend dev-only-obroklik example.echo)"
+OBT_PROV="$(token obroklik-backend "$OBR_SECRET" "$ECHO_AUDIENCE")"
 code="$(curl -sS -o /dev/null -w '%{http_code}' -H "Authorization: Bearer $OBT_PROV" -H 'Content-Type: application/json' -d "{\"id\":\"late-$RUN\",\"value\":\"x\"}" "$PROVIDER_URL/submit")"
 [[ "$code" == 403 ]] || die "provider must refuse a revoked app even with a previously resolved endpoint, got $code"
 obroklik publish-raw --subject example.echo.submit.obroklik --id "late-q-$RUN" >/dev/null   # broker still accepts (ACL is identity based) ...

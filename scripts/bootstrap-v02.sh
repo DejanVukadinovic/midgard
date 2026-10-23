@@ -10,7 +10,7 @@ need curl jq
 REPO_ROOT="${REPO_ROOT:-$(cd "$(dirname "$0")/.." && pwd)}"
 CONTRACT_TOOL="${CONTRACT_TOOL:-$REPO_ROOT/target/debug/contract-tool}"
 : "${OPERATOR_CLIENT_ID:=midgard-operator}" "${PUBLISHER_CLIENT_ID:=midgard-publisher}"
-: "${OPERATOR_CLIENT_SECRET:?set OPERATOR_CLIENT_SECRET}" "${PUBLISHER_CLIENT_SECRET:?set PUBLISHER_CLIENT_SECRET}"
+: "${OPERATOR_CLIENT_SECRET:=$(csecret "$OPERATOR_CLIENT_ID")}" "${PUBLISHER_CLIENT_SECRET:=$(csecret "$PUBLISHER_CLIENT_ID")}"
 : "${ECHO_PROVIDER_SUBJECT:=example-echo-provider}" "${ENVIRONMENT:=local}"
 NAME=example.echo.submit
 

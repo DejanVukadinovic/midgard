@@ -65,6 +65,7 @@ func TestVerifier(t *testing.T) {
 		"expired":        f.sign("ES256", claims(func(c map[string]any) { c["exp"] = time.Now().Add(-time.Hour).Unix() })),
 		"alg none":       strings.Replace(good, b([]byte(`{"alg":"ES256","kid":"k1"}`)), b([]byte(`{"alg":"none","kid":"k1"}`)), 1),
 		"tampered":       good[:len(good)-2] + "AA",
+		"id token":       f.sign("ES256", claims(func(c map[string]any) { c["at_hash"] = "x" })),
 		"garbage":        "not.a.jwt",
 	}
 	for name, tok := range cases {

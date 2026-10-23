@@ -26,6 +26,10 @@ pub struct VerifierConfig {
     pub leeway_secs: u64,
     /// Reject tokens whose `exp - iat` exceeds this (bounds the revocation window).
     pub max_lifetime_secs: u64,
+    /// Also accept `typ: JWT` access tokens (ZITADEL's JWT access tokens carry `typ: JWT`, not
+    /// `at+jwt`). ID tokens share that header, so they are then told apart by their claims
+    /// (`at_hash`, `nonce`, `amr`, `auth_time`) and, always, by the audience.
+    pub accept_plain_jwt_typ: bool,
 }
 
 /// A cryptographically verified access token.
@@ -89,8 +93,13 @@ impl TokenVerifier {
         if !matches!(alg, Algorithm::RS256 | Algorithm::ES256) {
             return Err(AuthError::Invalid("unsupported algorithm"));
         }
+        let plain_typ = header
+            .typ
+            .as_deref()
+            .is_some_and(|t| t.eq_ignore_ascii_case("jwt"));
         if let Some(typ) = &header.typ
             && !typ.eq_ignore_ascii_case("at+jwt")
+            && !(self.cfg.accept_plain_jwt_typ && plain_typ)
         {
             return Err(AuthError::Invalid("not an access token"));
         }
@@ -120,6 +129,7 @@ impl TokenVerifier {
         if claims.get("nonce").is_some()
             || claims.get("at_hash").is_some()
             || claims.get("token_use").and_then(Value::as_str) == Some("id")
+            || (plain_typ && (claims.get("amr").is_some() || claims.get("auth_time").is_some()))
         {
             return Err(AuthError::Invalid("id token presented as access token"));
         }

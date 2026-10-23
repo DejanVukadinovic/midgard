@@ -68,6 +68,7 @@ async fn serve(cfg: Config) -> anyhow::Result<()> {
             audience: cfg.audience.clone(),
             leeway_secs: 30,
             max_lifetime_secs: cfg.token_max_lifetime_secs,
+            accept_plain_jwt_typ: cfg.accept_plain_jwt_typ,
         },
         &cfg.jwks_url,
     );

@@ -26,6 +26,9 @@ type ClientCredentials struct {
 	HTTPClient   *http.Client
 	// Skew is how long before expiry a cached token is refreshed (default 30s).
 	Skew time.Duration
+	// Audiences optionally maps a symbolic audience (e.g. a contract name) to the identity
+	// provider's audience (ZITADEL project id).
+	Audiences map[string]string
 
 	mu    sync.Mutex
 	cache map[string]cachedToken
@@ -34,6 +37,26 @@ type ClientCredentials struct {
 type cachedToken struct {
 	token   string
 	expires time.Time
+}
+
+func (c *ClientCredentials) mapAudience(a string) string {
+	if m, ok := c.Audiences[a]; ok {
+		return m
+	}
+	return a
+}
+
+// isProjectID reports whether an audience is a ZITADEL project id (all digits).
+func isProjectID(a string) bool {
+	if a == "" {
+		return false
+	}
+	for _, r := range a {
+		if r < '0' || r > '9' {
+			return false
+		}
+	}
+	return true
 }
 
 func (c *ClientCredentials) Token(ctx context.Context, audience string) (string, error) {
@@ -47,8 +70,13 @@ func (c *ClientCredentials) Token(ctx context.Context, audience string) (string,
 		return t.token, nil
 	}
 	form := url.Values{"grant_type": {"client_credentials"}}
-	if audience != "" {
-		form.Set("audience", audience)
+	if aud := c.mapAudience(audience); aud != "" {
+		if isProjectID(aud) {
+			// ZITADEL: audiences are project ids requested through a scope.
+			form.Set("scope", "openid urn:zitadel:iam:org:project:id:"+aud+":aud")
+		} else {
+			form.Set("audience", aud)
+		}
 	}
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, c.TokenURL, strings.NewReader(form.Encode()))
 	if err != nil {

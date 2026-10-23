@@ -189,6 +189,7 @@ impl Env {
             jwks_url: format!("{issuer}/oauth/v2/keys"),
             audience: CORE_AUD.into(),
             token_max_lifetime_secs: 3600,
+            accept_plain_jwt_typ: false,
             operator_subjects: vec!["operator-1".into()],
             publishers: BTreeMap::from([(
                 "publisher-1".to_string(),
@@ -230,6 +231,7 @@ impl Env {
                 audience: cfg.audience.clone(),
                 leeway_secs: 5,
                 max_lifetime_secs: cfg.token_max_lifetime_secs,
+                accept_plain_jwt_typ: false,
             },
             &cfg.jwks_url,
         );

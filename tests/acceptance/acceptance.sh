@@ -11,19 +11,18 @@
 source "$(dirname "$0")/../../scripts/lib.sh"
 need curl jq
 ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
-: "${CAPABILITY_URL:?}" "${SAMPLE_APP:?}" "${CONTRACT_TOOL:?}" "${OPERATOR_CLIENT_SECRET:?}" "${PUBLISHER_CLIENT_SECRET:?}"
+: "${CAPABILITY_URL:?}" "${SAMPLE_APP:?}" "${CONTRACT_TOOL:?}"
+: "${OPERATOR_CLIENT_SECRET:=$(csecret midgard-operator)}" "${PUBLISHER_CLIENT_SECRET:=$(csecret midgard-publisher)}"
+OBR_SECRET="$(csecret obroklik-backend)"; FLEET_SECRET="$(csecret fleet-backend)"
 : "${RESTART_CMD:=$ROOT/scripts/dev-local.sh restart-core}"
 export CONTRACT_TOOL REPO_ROOT="$ROOT"
 
 PASS=0
 ok() { PASS=$((PASS + 1)); log "PASS  $*"; }
 
-user_token() { # user_token <user> <client_id> <audience>
-  curl -fsS -H 'Content-Type: application/json' -d "$(jq -nc --arg u "$1" --arg c "$2" --arg a "$3" '{user:$u,client_id:$c,audience:[$a]}')" "$IDP_URL/dev/user-token" | jq -er .access_token
-}
 app() { # app <client> <secret> args... -> runs the sample application facade once
   local id="$1" secret="$2"; shift 2
-  MIDGARD_REGISTRY_URL="$PLATFORM_URL" MIDGARD_TOKEN_URL="$IDP_TOKEN_URL" MIDGARD_CLIENT_ID="$id" MIDGARD_CLIENT_SECRET="$secret" \
+  MIDGARD_REGISTRY_URL="$PLATFORM_URL" MIDGARD_TOKEN_URL="$IDP_TOKEN_URL" MIDGARD_REGISTRY_AUDIENCE="$PLATFORM_AUDIENCE" MIDGARD_AUDIENCES="platform.example=$CAPABILITY_AUDIENCE" MIDGARD_CLIENT_ID="$id" MIDGARD_CLIENT_SECRET="$secret" \
     "$SAMPLE_APP" check "$@"
 }
 
@@ -40,20 +39,20 @@ log "== wait for the bound deployment to be healthy"
 for _ in $(seq 1 60); do
   [[ "$(body_of "$(api GET /v0/implementations "$OP" "")" | jq -r '.items[0].deployments[0].status')" == healthy ]] && break; sleep 1
 done
-OBT="$(token obroklik-backend dev-only-obroklik)"
-FLT="$(token fleet-backend dev-only-fleet)"
+OBT="$(token obroklik-backend "$OBR_SECRET")"
+FLT="$(token fleet-backend "$FLEET_SECRET")"
 
 log "== RES-01/OSS-05: granted app resolves by contract (no hard-coded URL) and invokes"
-out="$(app obroklik-backend dev-only-obroklik)"
+out="$(app obroklik-backend "$OBR_SECRET")"
 [[ "$(jq -r .echo.application <<<"$out")" == obroklik ]] || die "echo failed: $out"
 ok "obroklik resolved + invoked platform.example"
 
 log "== RES-02/OSS-12: ungranted app cannot resolve, even knowing the endpoint"
-set +e; app fleet-backend dev-only-fleet >/dev/null 2>&1; rc=$?; set -e
+set +e; app fleet-backend "$FLEET_SECRET" >/dev/null 2>&1; rc=$?; set -e
 [[ $rc == 3 ]] || die "fleet should be denied (exit 3), got $rc"
 out="$(api POST /v0/contracts/resolve "$FLT" '{"contract":"platform.example","version_constraint":">=1.0.0 <2.0.0"}')"
 expect 403 "$out" "fleet resolve"
-FLT_CAP="$(token fleet-backend dev-only-fleet platform.example)"   # valid token for the service's own audience
+FLT_CAP="$(token fleet-backend "$FLEET_SECRET" "$CAPABILITY_AUDIENCE")"   # valid token for the service's own audience
 code="$(curl -sS -o /dev/null -w '%{http_code}' -H "Authorization: Bearer $FLT_CAP" -H 'Content-Type: application/json' -d '{"message":"x"}' "$CAPABILITY_URL/v1/echo")"
 [[ "$code" == 403 ]] || die "direct call by ungranted app must be 403, got $code"
 ok "ungranted application denied at registry and at the service"
@@ -68,8 +67,8 @@ ok "audience separation enforced"
 log "== OSS-13: tenant isolation through real delegated auth (alice@org-acme vs gina@org-globex)"
 ALICE="$(user_token alice obroklik-web prj-obroklik)"; GINA="$(user_token gina obroklik-web prj-obroklik)"
 RUN="$(date +%s)-$$"
-out_a="$(app obroklik-backend dev-only-obroklik --user-token "$ALICE" --note "alice-$RUN")"
-out_g="$(app obroklik-backend dev-only-obroklik --user-token "$GINA" --note "gina-$RUN")"
+out_a="$(app obroklik-backend "$OBR_SECRET" --user-token "$ALICE" --note "alice-$RUN")"
+out_g="$(app obroklik-backend "$OBR_SECRET" --user-token "$GINA" --note "gina-$RUN")"
 tenant_a="$(body_of "$(api POST /v0/tenants/resolve "$OBT" "$(jq -nc --arg t "$ALICE" '{user_token:$t}')")" | jq -r .tenant_id)"
 tenant_g="$(body_of "$(api POST /v0/tenants/resolve "$OBT" "$(jq -nc --arg t "$GINA" '{user_token:$t}')")" | jq -r .tenant_id)"
 [[ -n "$tenant_a" && "$tenant_a" != null && "$tenant_a" != "$tenant_g" ]] || die "organizations must map to distinct tenants"
@@ -80,12 +79,12 @@ jq -e '[.notes[].body]|map(select(startswith("gina-")))|length==0' <<<"$out_a" >
 ok "same application, two organizations -> separate tenants and separate data"
 
 log "== IAM-05/OSS-13: spoofed organization / tenant header is ignored or rejected"
-out="$(api POST /v0/tenants/resolve "$OBT" "$(jq -nc --arg t "$GINA" '{user_token:$t,organization_id:"org-acme"}')")"
+out="$(api POST /v0/tenants/resolve "$OBT" "$(jq -nc --arg t "$GINA" '{user_token:$t,organization_id:$o}' --arg o "$ORG_A")")"
 expect 403 "$out" "gina selecting org-acme"
-out="$(api POST /v0/tenants/resolve "$OBT" "$(jq -nc --arg t "$ALICE" '{user_token:$t,organization_id:"org-globex"}')")"
+out="$(api POST /v0/tenants/resolve "$OBT" "$(jq -nc --arg t "$ALICE" '{user_token:$t,organization_id:$o}' --arg o "$ORG_B")")"
 expect 403 "$out" "alice selecting org-globex for obroklik"
-code="$(curl -sS -o /tmp/acc-spoof.json -w '%{http_code}' -H "Authorization: Bearer $(token obroklik-backend dev-only-obroklik platform.example)" \
-  -H "X-Delegated-User-Token: $GINA" -H "X-Tenant-Id: $tenant_a" -H "X-Organization-Id: org-acme" "$CAPABILITY_URL/v1/notes")"
+code="$(curl -sS -o /tmp/acc-spoof.json -w '%{http_code}' -H "Authorization: Bearer $(token obroklik-backend "$OBR_SECRET" "$CAPABILITY_AUDIENCE")" \
+  -H "X-Delegated-User-Token: $GINA" -H "X-Tenant-Id: $tenant_a" -H "X-Organization-Id: $ORG_A" "$CAPABILITY_URL/v1/notes")"
 [[ "$code" == 403 ]] || die "spoofed org header must be rejected (403), got $code"
 ok "spoofed organization/tenant selection denied"
 
@@ -93,7 +92,7 @@ log "== IAM-03: one organization, two applications -> distinct tenants"
 ALICE_FLEET="$(user_token alice fleet-web prj-fleet)"
 tf="$(body_of "$(api POST /v0/tenants/resolve "$FLT" "$(jq -nc --arg t "$ALICE_FLEET" '{user_token:$t}')")" | jq -r .tenant_id)"
 [[ "$tf" != null && "$tf" != "$tenant_a" ]] || die "org-acme must have distinct tenants per application"
-tfb="$(body_of "$(api POST /v0/tenants/resolve "$FLT" "$(jq -nc --arg t "$ALICE_FLEET" '{user_token:$t,organization_id:"org-globex"}')")" | jq -r .tenant_id)"
+tfb="$(body_of "$(api POST /v0/tenants/resolve "$FLT" "$(jq -nc --arg t "$ALICE_FLEET" '{user_token:$t,organization_id:$o}' --arg o "$ORG_B")")" | jq -r .tenant_id)"
 [[ "$tfb" != null && "$tfb" != "$tf" ]] || die "explicit extra-org grant must select a different tenant"
 ok "distinct tenants per (organization, application)"
 
@@ -106,10 +105,10 @@ out="$(api POST /v0/applications "" '{}' )"; expect 401 "$out" "anonymous regist
 ok "registration/grant/binding APIs refuse non-operators"
 
 log "== OSS-15/ENV-03: restart core; registrations, bindings and data survive"
-before="$(app obroklik-backend dev-only-obroklik --user-token "$ALICE" | jq '.notes|length')"
+before="$(app obroklik-backend "$OBR_SECRET" --user-token "$ALICE" | jq '.notes|length')"
 eval "$RESTART_CMD" >/dev/null
 sleep 3
-after="$(app obroklik-backend dev-only-obroklik --user-token "$ALICE" | jq '.notes|length')"
+after="$(app obroklik-backend "$OBR_SECRET" --user-token "$ALICE" | jq '.notes|length')"
 [[ "$after" == $((before + 1)) ]] || die "after restart expected $((before + 1)) notes, got $after (before=$before)"
 "$ROOT/scripts/bootstrap.sh"   # rerun after restart is still a no-op
 [[ "$(jq '.items|length' <<<"$(body_of "$(api GET /v0/applications "$(token midgard-operator "$OPERATOR_CLIENT_SECRET")" "")")")" == 2 ]] || die "duplicate apps after rerun"

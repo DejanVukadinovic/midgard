@@ -156,6 +156,7 @@ impl Harness {
                 audience: AUD.into(),
                 leeway_secs: 5,
                 max_lifetime_secs: 3600,
+                accept_plain_jwt_typ: false,
             },
             &format!("{issuer}/oauth/v2/keys"),
         );

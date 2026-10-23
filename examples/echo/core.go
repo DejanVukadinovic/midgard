@@ -32,7 +32,11 @@ func (t *tokenSource) Token(ctx context.Context, audience string) (string, error
 	}
 	form := url.Values{"grant_type": {"client_credentials"}}
 	if audience != "" {
-		form.Set("audience", audience)
+		if strings.Trim(audience, "0123456789") == "" {
+			form.Set("scope", "openid urn:zitadel:iam:org:project:id:"+audience+":aud") // ZITADEL project id
+		} else {
+			form.Set("audience", audience)
+		}
 	}
 	req, _ := http.NewRequestWithContext(ctx, "POST", t.url, strings.NewReader(form.Encode()))
 	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
