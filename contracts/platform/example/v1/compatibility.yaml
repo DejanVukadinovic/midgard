@@ -1,0 +1,5 @@
+policy: backward-compatible-within-major
+major: 1
+notes: |
+  1.1.0 adds GET /v1/ping. Removing operations or response properties, or adding required
+  request properties, is a breaking change and needs a new major version.

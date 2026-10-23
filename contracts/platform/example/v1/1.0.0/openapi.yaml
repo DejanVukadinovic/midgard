@@ -1,0 +1,103 @@
+openapi: 3.1.0
+info:
+  title: platform.example
+  version: 1.0.0
+  description: Synthetic example contract used to verify MIDGARD end to end (echo + tenant-owned notes).
+paths:
+  /v1/echo:
+    post:
+      operationId: echo
+      summary: Echo a message back, annotated with the calling application.
+      security: [{workloadToken: []}]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [message]
+              properties:
+                message: {type: string, maxLength: 1024}
+      responses:
+        '200':
+          description: Echoed message
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [message, application]
+                properties:
+                  message: {type: string}
+                  application: {type: string}
+        '401': {$ref: '#/components/responses/Problem'}
+        '403': {$ref: '#/components/responses/Problem'}
+  /v1/notes:
+    get:
+      operationId: listNotes
+      summary: List the delegated user's tenant notes.
+      security: [{workloadToken: [], userToken: []}]
+      responses:
+        '200':
+          description: Notes of the resolved tenant only
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [items]
+                properties:
+                  items:
+                    type: array
+                    items: {$ref: '#/components/schemas/Note'}
+        '401': {$ref: '#/components/responses/Problem'}
+        '403': {$ref: '#/components/responses/Problem'}
+    post:
+      operationId: createNote
+      summary: Create a note owned by the delegated user's tenant.
+      security: [{workloadToken: [], userToken: []}]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [body]
+              properties:
+                body: {type: string, maxLength: 4096}
+      responses:
+        '201':
+          description: Created
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/Note'}
+        '401': {$ref: '#/components/responses/Problem'}
+        '403': {$ref: '#/components/responses/Problem'}
+components:
+  securitySchemes:
+    workloadToken:
+      type: http
+      scheme: bearer
+      description: Application workload access token whose audience is this implementation.
+    userToken:
+      type: apiKey
+      in: header
+      name: X-Delegated-User-Token
+      description: The end user's access token. Tenant context is derived from it by the platform, never from caller-supplied identifiers.
+  schemas:
+    Note:
+      type: object
+      required: [id, body]
+      properties:
+        id: {type: string, format: uuid}
+        body: {type: string}
+  responses:
+    Problem:
+      description: RFC 9457 problem document
+      content:
+        application/problem+json:
+          schema:
+            type: object
+            required: [status, code]
+            properties:
+              status: {type: integer}
+              code: {type: string}
+              detail: {type: string}

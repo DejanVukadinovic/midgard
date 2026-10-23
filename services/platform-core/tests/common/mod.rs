@@ -157,11 +157,11 @@ impl Env {
             .unwrap();
         // Cluster-wide login role used by the core at runtime: not superuser, not owner, no BYPASSRLS.
         let _ = admin_pool
-            .execute("DO $$ BEGIN IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname='midgard_app') THEN CREATE ROLE midgard_app LOGIN PASSWORD 'midgard_app_test' NOSUPERUSER NOBYPASSRLS; END IF; EXCEPTION WHEN duplicate_object THEN NULL; END $$")
+            .execute("DO $$ BEGIN IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname='midgard_it_app') THEN CREATE ROLE midgard_it_app LOGIN PASSWORD 'midgard_it_app_test' NOSUPERUSER NOBYPASSRLS; END IF; EXCEPTION WHEN duplicate_object THEN NULL; END $$")
             .await;
         let _ = admin_pool.execute("DO $$ BEGIN IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname='midgard_runtime') THEN CREATE ROLE midgard_runtime NOLOGIN; END IF; EXCEPTION WHEN duplicate_object THEN NULL; END $$").await;
         let _ = admin_pool
-            .execute("GRANT midgard_runtime TO midgard_app")
+            .execute("GRANT midgard_runtime TO midgard_it_app")
             .await;
 
         let owner_pool = PgPoolOptions::new()
@@ -170,7 +170,11 @@ impl Env {
             .await
             .unwrap();
         MIGRATOR.run(&owner_pool).await.expect("migrations");
-        let app_url = with_db(&admin, &db_name, Some(("midgard_app", "midgard_app_test")));
+        let app_url = with_db(
+            &admin,
+            &db_name,
+            Some(("midgard_it_app", "midgard_it_app_test")),
+        );
         let pool = PgPoolOptions::new()
             .max_connections(8)
             .connect(&app_url)

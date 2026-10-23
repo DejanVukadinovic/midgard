@@ -53,6 +53,7 @@ pub struct UserCfg {
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 pub struct IdpConfig {
+    #[serde(default)]
     pub issuer: String,
     #[serde(default)]
     pub clients: Vec<ClientCfg>,
@@ -307,4 +308,9 @@ pub async fn spawn(mut cfg: IdpConfig) -> (Arc<Idp>, String) {
     let app = idp.router();
     tokio::spawn(async move { axum::serve(l, app).await.ok() });
     (idp, url)
+}
+
+/// Serve the IdP on an existing listener (used by the `dev-idp` binary).
+pub async fn serve(l: tokio::net::TcpListener, idp: Arc<Idp>) -> std::io::Result<()> {
+    axum::serve(l, idp.router()).await
 }

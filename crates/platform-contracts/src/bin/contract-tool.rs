@@ -1,5 +1,6 @@
 //! `contract-tool check <old-openapi> <new-openapi>` — exit 1 on breaking changes.
 //! `contract-tool digest <dir>` — print the bundle digest for a contract package directory.
+//! `contract-tool request <dir>` — print the `POST /v0/contracts` JSON body for a package directory.
 
 use std::{fs, process::ExitCode};
 
@@ -30,7 +31,7 @@ fn main() -> ExitCode {
                 ExitCode::FAILURE
             }
         }
-        Some("digest") if args.len() == 3 => {
+        Some(cmd @ ("digest" | "request")) if args.len() == 3 => {
             let dir = &args[2];
             let run = || -> Result<String, String> {
                 let m: Manifest = serde_yaml::from_str(
@@ -42,9 +43,15 @@ fn main() -> ExitCode {
                     fs::read_to_string(format!("{dir}/openapi.yaml")).map_err(|e| e.to_string())?;
                 let sem =
                     fs::read_to_string(format!("{dir}/semantics.md")).map_err(|e| e.to_string())?;
-                Ok(ContractBundle::parse(m, oas, sem)
-                    .map_err(|e| e.to_string())?
-                    .digest())
+                let b = ContractBundle::parse(m, oas, sem).map_err(|e| e.to_string())?;
+                if cmd == "digest" {
+                    Ok(b.digest())
+                } else {
+                    serde_json::to_string(&serde_json::json!({
+                        "manifest": b.manifest, "openapi": b.openapi, "semantics": b.semantics, "digest": b.digest(),
+                    }))
+                    .map_err(|e| e.to_string())
+                }
             };
             match run() {
                 Ok(d) => {
@@ -58,7 +65,9 @@ fn main() -> ExitCode {
             }
         }
         _ => {
-            eprintln!("usage: contract-tool check <old.yaml> <new.yaml> | digest <contract-dir>");
+            eprintln!(
+                "usage: contract-tool check <old.yaml> <new.yaml> | digest <contract-dir> | request <contract-dir>"
+            );
             ExitCode::from(2)
         }
     }

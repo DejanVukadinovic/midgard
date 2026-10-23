@@ -326,6 +326,14 @@ checksum = "9e9de72ce2ad1f90dc62fa25f0f430ef85eb4b0d8fa0be4f30373bc40a21d28e"
 [[package]]
 name = "dev-idp"
 version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "platform-testkit",
+ "serde_json",
+ "tokio",
+ "tracing",
+ "tracing-subscriber",
+]
 
 [[package]]
 name = "digest"
@@ -439,6 +447,27 @@ dependencies = [
 [[package]]
 name = "example-capability"
 version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "axum",
+ "hex",
+ "platform-auth",
+ "platform-contracts",
+ "platform-http",
+ "platform-persistence",
+ "platform-testkit",
+ "reqwest",
+ "serde",
+ "serde_json",
+ "serde_yaml",
+ "sha2",
+ "sqlx",
+ "tokio",
+ "tower-http",
+ "tracing",
+ "tracing-subscriber",
+ "uuid",
+]
 
 [[package]]
 name = "ff"
