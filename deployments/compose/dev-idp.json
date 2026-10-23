@@ -1,0 +1,83 @@
+{
+  "_comment": "DEVELOPMENT ONLY fixtures for the offline demo stack. Synthetic identities; these values are not secrets and must never be used outside a local demo.",
+  "clients": [
+    {
+      "client_id": "midgard-operator",
+      "client_secret": "dev-only-operator",
+      "subject": "operator-1",
+      "audiences": [
+        "midgard-core"
+      ]
+    },
+    {
+      "client_id": "midgard-publisher",
+      "client_secret": "dev-only-publisher",
+      "subject": "publisher-1",
+      "audiences": [
+        "midgard-core"
+      ]
+    },
+    {
+      "client_id": "example-deployer",
+      "client_secret": "dev-only-deployer",
+      "subject": "example-deployer",
+      "audiences": [
+        "midgard-core"
+      ]
+    },
+    {
+      "client_id": "obroklik-backend",
+      "client_secret": "dev-only-obroklik",
+      "subject": "svc-obroklik",
+      "audiences": [
+        "midgard-core",
+        "platform.example"
+      ]
+    },
+    {
+      "client_id": "fleet-backend",
+      "client_secret": "dev-only-fleet",
+      "subject": "svc-fleet",
+      "audiences": [
+        "midgard-core",
+        "platform.example"
+      ]
+    }
+  ],
+  "users": [
+    {
+      "sub": "alice",
+      "home_org": "org-acme",
+      "roles": {
+        "prj-obroklik": {
+          "member": [
+            "org-acme"
+          ]
+        },
+        "prj-fleet": {
+          "viewer": [
+            "org-acme",
+            "org-globex"
+          ]
+        }
+      }
+    },
+    {
+      "sub": "gina",
+      "home_org": "org-globex",
+      "roles": {
+        "prj-fleet": {
+          "viewer": [
+            "org-globex"
+          ]
+        },
+        "prj-obroklik": {
+          "member": [
+            "org-globex"
+          ]
+        }
+      }
+    }
+  ],
+  "token_ttl_secs": 300
+}

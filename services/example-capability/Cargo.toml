@@ -1,0 +1,37 @@
+[package]
+name = "example-capability"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "Sample MIDGARD service implementing platform.example (echo + tenant-owned notes)."
+
+[lib]
+name = "example_capability"
+path = "src/lib.rs"
+
+[[bin]]
+name = "example-capability"
+path = "src/main.rs"
+
+[dependencies]
+anyhow.workspace = true
+axum.workspace = true
+platform-auth.workspace = true
+platform-contracts.workspace = true
+serde_yaml.workspace = true
+platform-http.workspace = true
+platform-persistence.workspace = true
+reqwest.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+sqlx.workspace = true
+tokio.workspace = true
+tower-http.workspace = true
+tracing.workspace = true
+tracing-subscriber.workspace = true
+uuid.workspace = true
+sha2.workspace = true
+hex.workspace = true
+
+[dev-dependencies]
+platform-testkit.workspace = true

@@ -1,0 +1,9 @@
+title = "MIDGARD gitleaks config"
+[extend]
+useDefault = true
+
+# Documented, clearly non-production fixtures used by the offline demo stack.
+[allowlist]
+description = "dev-only fixtures"
+regexes = ['''dev-only-[a-z]+''', '''midgard_it_app_test''', '''cap_app_test''', '''postgres://midgard:midgard@localhost''']
+paths = ['''deployments/compose/dev-idp\.json''', '''^services/.*/tests/''']

@@ -1,0 +1,6 @@
+target
+.git
+.local
+.env
+deployments/compose/.secrets
+**/node_modules

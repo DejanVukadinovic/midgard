@@ -1,0 +1,11 @@
+/target
+.env
+*.pem
+*.key
+*.secret
+secrets/
+.local/
+deployments/compose/.secrets/
+*.log
+.DS_Store
+sdk/go/vendor/

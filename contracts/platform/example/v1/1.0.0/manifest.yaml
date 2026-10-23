@@ -1,0 +1,9 @@
+id: platform.example
+version: 1.0.0
+protocol: http
+specification: openapi-3.1
+permissions:
+  - example:read
+  - example:write
+compatibility:
+  policy: backward-compatible-within-major

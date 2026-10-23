@@ -1,0 +1,16 @@
+# Static configuration for the local edge proxy. TLS termination is NOT configured here:
+# this is the local-development edge. See docs/operations/deployment.md for production guidance.
+entryPoints:
+  web:
+    address: ":8088"
+providers:
+  file:
+    filename: /etc/traefik/dynamic.yml
+log:
+  level: INFO
+accessLog:
+  fields:
+    headers:
+      defaultMode: drop   # never log Authorization or other headers
+api:
+  dashboard: false
