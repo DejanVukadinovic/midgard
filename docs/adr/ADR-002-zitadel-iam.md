@@ -26,3 +26,6 @@ The `link` provisioner attaches pre-existing projects/clients; the `zitadel` pro
 4. ZITADEL's resource footprint and required extra configuration for the pinned version.
 5. Behaviour of role revocation on already-issued JWTs (we document a revocation window equal to the access-token lifetime).
 The checklist and evidence log live in [operations/zitadel.md](../operations/zitadel.md).
+
+## Update 2026-10-23
+Verified against ZITADEL v2.71.8: role-claim shape, audiences-as-project-ids, machine-user claims (`sub` = user id, `client_id` = user name) and the `resourceowner` scope requirement are recorded in [operations/zitadel.md](../operations/zitadel.md).

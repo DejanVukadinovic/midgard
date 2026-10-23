@@ -29,5 +29,6 @@
 | Compose | Bootstrap repeated, no duplicates | `v02.sh` runs bootstrap twice | Verified as local processes; **not run in Compose** |
 | Compose | Restart keeps state | v0 restart acceptance; Compose restart in CI job | **Not run** for v0.2 in Compose |
 | Compose | Test profile deterministic exit code | `integration-tests` service | **Not run** (the script itself was run natively) |
-| Compose | ZITADEL | — | **Not implemented** (dev IdP only) |
+| IAM | Real ZITADEL v2.71.8: v0 acceptance (10 checks) + v0.2 integration (10 checks) | `make acceptance-zitadel` from a dropped database | Verified (release binary, local processes) |
+| Compose | ZITADEL container, `zitadel-bootstrap` job, `with-idp-env` wrapper in the images | CI job `v02-compose` | **Not run** |
 | Hardening | Secret scan, license/advisory, image scan | `make audit`, `make secrets-scan`, CI security workflow | **Not run** here (tools unavailable); new dependencies: `async-nats` (Apache-2.0), `jsonschema` (MIT), `async-trait` (MIT/Apache-2.0), `nats.go` (Apache-2.0) |

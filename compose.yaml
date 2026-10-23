@@ -64,12 +64,14 @@ services:
     depends_on:
       platform-core: {condition: service_healthy}
       nats-init: {condition: service_completed_successfully}
+      zitadel-bootstrap: {condition: service_completed_successfully, required: false}
+    volumes: [idp:/idp:ro]     # ZITADEL mode: the fixture reads ids/secrets/audiences published by zitadel-bootstrap
     environment:
       ECHO_ISSUER: ${IDP_ISSUER}
       ECHO_TOKEN_URL: ${IDP_TOKEN_URL}
       ECHO_CORE_URL: http://platform-core:8080
       ECHO_CLIENT_ID: echo-provider
-      ECHO_CLIENT_SECRET: dev-only-echo-provider      # dev-idp fixture; with a real IdP use ECHO_CLIENT_SECRET_FILE
+      ECHO_CLIENT_SECRET: dev-only-echo-provider      # dev-idp fixture only; replaced by the idp volume's secret with ZITADEL
       ECHO_PUBLIC_ENDPOINT: http://example-provider:8080   # Compose DNS name, valid only inside the network
       ECHO_NATS_URL: nats://nats:4222
       ECHO_NATS_USER: provider
@@ -95,12 +97,15 @@ services:
       platform-core: {condition: service_healthy}
       example-capability: {condition: service_healthy}
       example-provider: {condition: service_healthy}
-      dev-idp: {condition: service_healthy}
+      dev-idp: {condition: service_healthy, required: false}
+      zitadel-bootstrap: {condition: service_completed_successfully, required: false}
+    volumes: [idp:/idp:ro]
     environment: &tools-env
       PLATFORM_URL: http://platform-core:8080
-      IDP_URL: http://dev-idp:9000
-      OPERATOR_CLIENT_SECRET: dev-only-operator     # dev-idp fixtures: synthetic, never reuse
-      PUBLISHER_CLIENT_SECRET: dev-only-publisher
+      IDP_URL: http://dev-idp:9000          # dev-idp mode only
+      IDP_DIR: /idp                         # ZITADEL mode: ids, audiences and secrets published by zitadel-bootstrap
+      ZITADEL_URL: http://zitadel:8080
+      OUT_DIR: /idp
 
   # Synthetic client application: resolves example.echo.submit and invokes both interfaces once.
   example-client:
@@ -110,6 +115,7 @@ services:
     image: midgard/echo:dev
     command: ["client", "submit-http", "--id", "demo-1"]
     depends_on: {bootstrap: {condition: service_completed_successfully}}
+    volumes: [idp:/idp:ro]
     environment:
       ECHO_ISSUER: ${IDP_ISSUER}
       ECHO_TOKEN_URL: ${IDP_TOKEN_URL}
@@ -126,6 +132,7 @@ services:
     command: ["bash", "-c", "NATS_CLIENT_PASSWORD=$$(cat /run/secrets/nats_client_password) exec tests/integration/v02.sh"]
     depends_on:
       bootstrap: {condition: service_completed_successfully}
+    volumes: [idp:/idp:ro]
     environment:
       <<: *tools-env
       PROVIDER_URL: http://example-provider:8080

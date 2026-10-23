@@ -27,11 +27,11 @@ products it accelerates, and is **not** a hosted platform or marketplace.
 | Go SDK (resolver cache, bounded stale-if-error, no replay of non-idempotent calls) + generated contract client | Implemented, tested |
 | Sample contract `platform.example`, sample Rust service, sample Go application | Implemented, end-to-end tested |
 | Docker Compose stack, idempotent bootstrap, acceptance suite | Implemented; Compose path runs in CI (see [acceptance matrix](docs/contributing/acceptance-matrix.md)) |
-| **ZITADEL integration** (project/client provisioning, real claim shapes, delegation, revocation) | **Written against documented APIs, NOT yet verified against a live release** — see [ZITADEL status](docs/operations/zitadel.md) |
+| **ZITADEL v2.71.8** (bootstrap, real claim shapes, audiences, headless user tokens, v0 + v0.2 end-to-end) | Verified against the real release binary (`make acceptance-zitadel`). Core's management-API provisioner, delegation/token exchange, revocation latency and the ZITADEL *container* are **not yet verified** — see [ZITADEL status](docs/operations/zitadel.md) |
 | **v0.2** multi-protocol capability contracts (OpenAPI 3.1 + AsyncAPI 3.0), interface registration, interface-aware resolution and provider-side `/v0/authorize` | Implemented, tested — see [contracts v0.2](docs/contracts-v0.2.md) |
 | **v0.2** broker-neutral messaging crate, in-memory + NATS JetStream adapters (conformance, restart persistence, broker ACLs) | Implemented, tested against a real `nats-server` — see [messaging](docs/messaging.md) |
 | **v0.2** language-independent Go provider/client fixture and end-to-end script | Implemented; run natively (`make acceptance-interfaces`) |
-| **v0.2** root `compose.yaml` (NATS, provider, bootstrap, `integration-tests`) | Written, `docker compose config` validated; **containers not yet run**, **no ZITADEL** — see [quickstart](docs/compose-quickstart.md) |
+| **v0.2** root `compose.yaml` (ZITADEL, NATS, provider, bootstrap, `integration-tests`) | Written, `docker compose config` validated; **containers not yet run** — see [quickstart](docs/compose-quickstart.md) |
 | Kubernetes, outbox/event router, business capabilities | Not implemented (non-goals for v0.x) |
 
 ## Architecture

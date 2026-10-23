@@ -1,12 +1,16 @@
 # MIDGARD developer entry points. `make help` lists targets.
 SHELL := /bin/bash
+# The v0 `make dev-up` path uses the offline dev IdP regardless of the (ZITADEL) defaults in .env.
+export IDP_ISSUER := http://dev-idp:9000
+export IDP_TOKEN_URL := http://dev-idp:9000/oauth/v2/token
+export PLATFORM_ACCEPT_JWT_TYP := false
 COMPOSE := docker compose --env-file .env -f deployments/compose/compose.yaml -f deployments/compose/compose.dev.yaml --profile dev-idp --profile demo
 OAPI_CODEGEN := go run github.com/oapi-codegen/oapi-codegen/v2/cmd/oapi-codegen@v2.4.1
 export TEST_DATABASE_ADMIN_URL ?= postgres://midgard:midgard@localhost:5432/postgres
 
 .PHONY: help fmt fmt-check lint test test-rust test-go contracts-check sdk-generate sdk-check \
         dev-up dev-down bootstrap acceptance acceptance-compose local-up local-down audit secrets-scan \
-        up down test-compose acceptance-interfaces test-messaging
+        up down test-compose acceptance-interfaces acceptance-zitadel test-messaging
 
 help: ## list targets
 	@grep -hE '^[a-zA-Z_-]+:.*## ' $(MAKEFILE_LIST) | awk -F':.*## ' '{printf "  %-20s %s\n", $$1, $$2}'
@@ -93,6 +97,11 @@ acceptance-interfaces: ## v0.2 end-to-end (processes on localhost; needs nats-se
 	WITH_V02=1 scripts/dev-local.sh up
 	eval "$$(scripts/dev-local.sh env)" && OPERATOR_CLIENT_SECRET=dev-only-operator PUBLISHER_CLIENT_SECRET=dev-only-publisher scripts/bootstrap.sh \
 	  && OPERATOR_CLIENT_SECRET=dev-only-operator PUBLISHER_CLIENT_SECRET=dev-only-publisher tests/integration/v02.sh
+
+acceptance-zitadel: ## v0 + v0.2 end-to-end against a REAL ZITADEL (processes on localhost; needs ZITADEL_BIN and NATS_SERVER_BIN)
+	export IDP=zitadel WITH_V02=1; scripts/dev-local.sh up \
+	  && eval "$$(scripts/dev-local.sh env)" && scripts/bootstrap.sh \
+	  && tests/acceptance/acceptance.sh && tests/integration/v02.sh
 
 test-messaging: ## messaging conformance incl. real NATS JetStream (needs nats-server; set NATS_SERVER_BIN)
 	MIDGARD_REQUIRE_NATS=1 cargo test -p platform-messaging --locked

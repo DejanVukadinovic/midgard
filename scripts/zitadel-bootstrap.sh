@@ -158,4 +158,6 @@ log "7/7 verifying: operator token carries the core audience"
 tok="$(curl -fsS -u "midgard-operator:$(secret_get SECRET_MIDGARD_OPERATOR)" "${HOSTH[@]}" -d grant_type=client_credentials \
   --data-urlencode "scope=openid urn:zitadel:iam:org:project:id:$CORE_PID:aud" "$ZITADEL_URL/oauth/v2/token" | jq -er .access_token)"
 jq -e --arg a "$CORE_PID" --arg s "$OPERATOR_ID" '.aud|index($a)!=null' <<<"$(cut -d. -f2 <<<"$tok" | tr '_-' '/+' | base64 -d 2>/dev/null)" >/dev/null || die "operator token lacks the core audience"
+# In Compose the output volume is read by the (non-root) services; dev only, the volume is internal.
+if [[ -n "${OUT_READABLE:-}" ]]; then chmod a+rx "$OUT_DIR"; chmod a+r "$OUT_DIR/idp.env" "$SECRETS"; fi
 log "ZITADEL bootstrap complete (ids in $OUT_DIR/idp.env, secrets in $SECRETS)"

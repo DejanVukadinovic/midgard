@@ -122,6 +122,35 @@ jobs:
         uses: actions/upload-artifact@v4
         with: {name: v02-local-logs, path: .local/*.log}
 
+  zitadel-local:
+    # The same scenarios against a real, pinned ZITADEL release (binary) + PostgreSQL + NATS, as local processes.
+    runs-on: ubuntu-24.04
+    timeout-minutes: 40
+    services:
+      postgres:
+        image: postgres:16.4
+        env: {POSTGRES_USER: midgard, POSTGRES_PASSWORD: midgard}
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U midgard" --health-interval 5s --health-timeout 3s --health-retries 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@master
+        with: {toolchain: "1.97.0"}
+      - uses: actions/setup-go@v5
+        with: {go-version: "1.25"}
+      - uses: Swatinem/rust-cache@v2
+      - run: sudo apt-get update && sudo apt-get install -y --no-install-recommends postgresql-client jq
+      - run: |
+          curl -sSL -o /tmp/nats.tgz https://github.com/nats-io/nats-server/releases/download/v2.10.22/nats-server-v2.10.22-linux-amd64.tar.gz
+          tar -xzf /tmp/nats.tgz -C /tmp && echo "NATS_SERVER_BIN=/tmp/nats-server-v2.10.22-linux-amd64/nats-server" >> "$GITHUB_ENV"
+          curl -sSL -o /tmp/zitadel.tgz https://github.com/zitadel/zitadel/releases/download/v2.71.8/zitadel-linux-amd64.tar.gz
+          mkdir /tmp/zitadel && tar -xzf /tmp/zitadel.tgz -C /tmp/zitadel && echo "ZITADEL_BIN=/tmp/zitadel/zitadel-linux-amd64/zitadel" >> "$GITHUB_ENV"
+      - run: make acceptance-zitadel
+      - if: always()
+        uses: actions/upload-artifact@v4
+        with: {name: zitadel-local-logs, path: .local/*.log}
+
   v02-compose:
     # The documented v0.2 quickstart on clean volumes: root compose.yaml + integration-tests profile.
     runs-on: ubuntu-24.04

@@ -312,3 +312,74 @@ async fn idp_outage_fails_closed_without_corrupting_state() {
     assert_eq!(n, 0);
     drop_db(env).await;
 }
+
+// ZITADEL signs JWT access tokens with `typ: JWT`: accepted only when enabled, and ID tokens (same header)
+// are still told apart by their claims.
+#[tokio::test]
+async fn plain_jwt_typ_is_accepted_only_when_enabled_and_id_tokens_stay_rejected() {
+    let call = |env: &Env, tok: String| {
+        let env_base = env.base.clone();
+        let http = env.http.clone();
+        async move {
+            http.get(format!("{env_base}/v0/applications"))
+                .bearer_auth(tok)
+                .send()
+                .await
+                .unwrap()
+                .status()
+                .as_u16()
+        }
+    };
+    let claims = |env: &Env, f: &dyn Fn(&mut serde_json::Value)| {
+        let mut c = env
+            .idp
+            .base_claims("operator-1", "op-client", &[CORE_AUD.to_string()], "");
+        f(&mut c);
+        c
+    };
+
+    let strict = Env::new().await;
+    let tok = strict.idp.sign_with_typ(&claims(&strict, &|_| {}), "JWT");
+    assert_eq!(
+        call(&strict, tok).await,
+        401,
+        "typ JWT is rejected by default"
+    );
+
+    let zitadel = Env::with(
+        |c| c.accept_plain_jwt_typ = true,
+        platform_core::provisioning::Provisioner::Link,
+    )
+    .await;
+    let ok = zitadel.idp.sign_with_typ(&claims(&zitadel, &|_| {}), "JWT");
+    assert_eq!(
+        call(&zitadel, ok).await,
+        200,
+        "typ JWT access token accepted when enabled"
+    );
+    for (name, f) in [
+        (
+            "at_hash",
+            (&|c: &mut serde_json::Value| c["at_hash"] = json!("h"))
+                as &dyn Fn(&mut serde_json::Value),
+        ),
+        ("nonce", &|c| c["nonce"] = json!("n")),
+        ("amr", &|c| c["amr"] = json!(["pwd"])),
+        ("auth_time", &|c| c["auth_time"] = json!(1)),
+    ] {
+        let id = zitadel.idp.sign_with_typ(&claims(&zitadel, f), "JWT");
+        assert_eq!(
+            call(&zitadel, id).await,
+            401,
+            "id token marker `{name}` must be rejected"
+        );
+    }
+    let other = zitadel
+        .idp
+        .sign_with_typ(&claims(&zitadel, &|_| {}), "dpop+jwt");
+    assert_eq!(
+        call(&zitadel, other).await,
+        401,
+        "other typ values stay rejected"
+    );
+}

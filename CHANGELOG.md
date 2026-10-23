@@ -22,7 +22,8 @@ Pre-1.0 platform API stability is described in [docs/contributing/api-stability.
 - `platform-messaging` (traits, conformance suite, in-memory and NATS JetStream adapters).
 - Go provider/client fixture (`examples/echo`), v0.2 bootstrap and end-to-end script, root `compose.yaml`, NATS config with ACLs.
 - Docs: contracts v0.2, messaging, IAM enforcement, compose quickstart, ADR-009…013, v0.2 acceptance status.
+- ZITADEL v2.71.8 as the default Compose IdP: idempotent `scripts/zitadel-bootstrap.sh`, headless end-user tokens for tests, `PLATFORM_ACCEPT_JWT_TYP` (ZITADEL `typ: JWT` access tokens; ID-token markers still rejected), project-id audiences requested as scopes, `make acceptance-zitadel`.
 
 ### Known limitations
 - ZITADEL integration is not yet verified against a live release (see docs/operations/zitadel.md).
-- v0.2: the Compose deployment has not been executed in an environment with Docker; ZITADEL is not part of the Compose stack; MQ tenant binding is not implemented; OpenAPI/AsyncAPI validation is structural, not a full conformance check.
+- v0.2: the Compose deployment has not been executed in an environment with Docker (ZITADEL was verified as a release binary); MQ tenant binding is not implemented; OpenAPI/AsyncAPI validation is structural, not a full conformance check.

@@ -6,6 +6,8 @@ set -euo pipefail
 ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
 cd "$ROOT"
 [[ -f .env ]] || cp .env.example .env
+# v0 path: offline dev IdP regardless of the ZITADEL defaults in .env
+export IDP_ISSUER=http://dev-idp:9000 IDP_TOKEN_URL=http://dev-idp:9000/oauth/v2/token PLATFORM_ACCEPT_JWT_TYP=false
 COMPOSE=(docker compose --env-file .env -f deployments/compose/compose.yaml -f deployments/compose/compose.dev.yaml --profile dev-idp --profile demo)
 
 [[ "${FRESH:-0}" == 1 ]] && "${COMPOSE[@]}" down -v --remove-orphans

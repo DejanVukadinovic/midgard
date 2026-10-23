@@ -23,8 +23,10 @@ func main() {
 	var err error
 	switch os.Args[1] {
 	case "provider":
+		loadIDPEnv()
 		err = runProvider(ctx)
 	case "client":
+		loadIDPEnv()
 		code, err = runClient(ctx, os.Args[2:])
 	case "nats-init":
 		err = runNatsInit(ctx)

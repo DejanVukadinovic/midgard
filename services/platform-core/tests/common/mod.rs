@@ -231,7 +231,7 @@ impl Env {
                 audience: cfg.audience.clone(),
                 leeway_secs: 5,
                 max_lifetime_secs: cfg.token_max_lifetime_secs,
-                accept_plain_jwt_typ: false,
+                accept_plain_jwt_typ: cfg.accept_plain_jwt_typ,
             },
             &cfg.jwks_url,
         );
