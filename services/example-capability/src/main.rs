@@ -51,7 +51,7 @@ async fn main() -> anyhow::Result<()> {
     );
     let mut pool = None;
     for attempt in 1..=30 {
-        match connect(&req("CAPABILITY_DATABASE_URL")?, 8).await {
+        match connect(&secret("CAPABILITY_DATABASE_URL")?, 8).await {
             Ok(p) => {
                 pool = Some(p);
                 break;

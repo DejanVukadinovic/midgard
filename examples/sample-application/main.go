@@ -16,8 +16,8 @@ import (
 	"strings"
 	"time"
 
-	midgard "github.com/dejanvukadinovic/midgard/sdk/go"
 	"github.com/dejanvukadinovic/midgard/examples/sample-application/internal/app"
+	midgard "github.com/dejanvukadinovic/midgard/sdk/go"
 )
 
 func env(name, def string) string {
@@ -71,6 +71,7 @@ func main() {
 		fs := flag.NewFlagSet("check", flag.ExitOnError)
 		userToken := fs.String("user-token", "", "end-user access token (exercises the tenant-owned notes path)")
 		org := fs.String("org", "", "organization selection (verified by the platform)")
+		note := fs.String("note", "", "text of the note to create (default: generated)")
 		_ = fs.Parse(os.Args[2:])
 		a := build()
 		ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
@@ -82,7 +83,7 @@ func main() {
 		}
 		out["echo"] = echo
 		if *userToken != "" {
-			note, err := a.CreateNote(ctx, *userToken, *org, "note from "+env("MIDGARD_CLIENT_ID", "app"))
+			note, err := a.CreateNote(ctx, *userToken, *org, noteText(*note))
 			if err != nil {
 				fail(err)
 			}
@@ -107,4 +108,11 @@ func fail(err error) {
 		os.Exit(3)
 	}
 	os.Exit(1)
+}
+
+func noteText(given string) string {
+	if given != "" {
+		return given
+	}
+	return "note from " + env("MIDGARD_CLIENT_ID", "app")
 }

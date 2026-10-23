@@ -67,15 +67,16 @@ ok "audience separation enforced"
 
 log "== OSS-13: tenant isolation through real delegated auth (alice@org-acme vs gina@org-globex)"
 ALICE="$(user_token alice obroklik-web prj-obroklik)"; GINA="$(user_token gina obroklik-web prj-obroklik)"
-app obroklik-backend dev-only-obroklik --user-token "$ALICE" >/dev/null
-out_g="$(app obroklik-backend dev-only-obroklik --user-token "$GINA")"
-notes_g="$(jq -c '[.notes[].body]' <<<"$out_g")"
-out_a="$(app obroklik-backend dev-only-obroklik --user-token "$ALICE")"
+RUN="$(date +%s)-$$"
+out_a="$(app obroklik-backend dev-only-obroklik --user-token "$ALICE" --note "alice-$RUN")"
+out_g="$(app obroklik-backend dev-only-obroklik --user-token "$GINA" --note "gina-$RUN")"
 tenant_a="$(body_of "$(api POST /v0/tenants/resolve "$OBT" "$(jq -nc --arg t "$ALICE" '{user_token:$t}')")" | jq -r .tenant_id)"
 tenant_g="$(body_of "$(api POST /v0/tenants/resolve "$OBT" "$(jq -nc --arg t "$GINA" '{user_token:$t}')")" | jq -r .tenant_id)"
 [[ -n "$tenant_a" && "$tenant_a" != null && "$tenant_a" != "$tenant_g" ]] || die "organizations must map to distinct tenants"
-[[ "$(jq '.notes|length' <<<"$out_a")" -ge 2 ]] || die "alice should see her notes: $out_a"
-[[ "$(jq '.notes|length' <<<"$out_g")" == 1 ]] || die "gina must see only her own tenant's notes: $notes_g"
+jq -e --arg m "alice-$RUN" '[.notes[].body]|index($m)!=null' <<<"$out_a" >/dev/null || die "alice should see her own note"
+jq -e --arg m "gina-$RUN" '[.notes[].body]|index($m)!=null' <<<"$out_g" >/dev/null || die "gina should see her own note"
+jq -e '[.notes[].body]|map(select(startswith("alice-")))|length==0' <<<"$out_g" >/dev/null || die "gina must never see alice's tenant data: $out_g"
+jq -e '[.notes[].body]|map(select(startswith("gina-")))|length==0' <<<"$out_a" >/dev/null || die "alice must never see gina's tenant data: $out_a"
 ok "same application, two organizations -> separate tenants and separate data"
 
 log "== IAM-05/OSS-13: spoofed organization / tenant header is ignored or rejected"
@@ -117,7 +118,9 @@ ok "core restart + bootstrap rerun preserve state"
 log "== SEC: resolver output contains logical names only; secrets not leaked in core logs"
 res="$(body_of "$(api POST /v0/contracts/resolve "$OBT" '{"contract":"platform.example","version_constraint":">=1.0.0 <2.0.0"}')")"
 [[ "$(jq -r .endpoint <<<"$res")" != *"172."* ]] || die "container IP in resolver output"
-if [[ -d "$ROOT/.local" ]]; then
+if [[ -n "${CORE_LOGS_CMD:-}" ]]; then
+  ! eval "$CORE_LOGS_CMD" | grep -qE 'dev-only-|eyJ[A-Za-z0-9_-]{20,}' || die "credentials/tokens found in service logs"
+elif [[ -d "$ROOT/.local" ]]; then
   ! grep -rqE 'dev-only-|eyJ[A-Za-z0-9_-]{20,}' "$ROOT/.local"/platform-core.log || die "credentials/tokens found in core logs"
 fi
 ok "no container IPs or credentials leaked"

@@ -1,0 +1,261 @@
+openapi: 3.1.0
+info:
+  title: MIDGARD registry API
+  version: 0.1.0
+  description: |
+    Control-plane API of MIDGARD core (pre-1.0; may change). Authentication: OAuth2 access tokens
+    (JWT) issued by the configured identity provider, audience `midgard-core`.
+    Privilege classes: **operator**, **publisher** (per namespace), **deployment identity**
+    (per implementation slug pattern) and **application workload** (registered OAuth client).
+    Errors are RFC 9457 `application/problem+json` with a stable `code`.
+servers:
+  - url: http://localhost:8080
+security:
+  - bearer: []
+paths:
+  /v0/applications:
+    post:
+      operationId: registerApplication
+      summary: Register an application (operator). Idempotent via Idempotency-Key.
+      parameters:
+        - {name: Idempotency-Key, in: header, required: true, schema: {type: string, maxLength: 128}}
+      requestBody:
+        required: true
+        content: {application/json: {schema: {$ref: '#/components/schemas/RegisterApplication'}}}
+      responses:
+        '201': {description: Created and active}
+        '200': {description: Replay of a completed operation with the same key and payload}
+        '400': {$ref: '#/components/responses/Problem'}
+        '401': {$ref: '#/components/responses/Problem'}
+        '403': {$ref: '#/components/responses/Problem'}
+        '409': {description: Slug taken or Idempotency-Key reused with a different payload, content: {application/problem+json: {schema: {$ref: '#/components/schemas/Problem'}}}}
+        '502': {description: Identity provider provisioning failed; retry with the same key}
+    get:
+      operationId: listApplications
+      responses: {'200': {description: OK}}
+  /v0/applications/{id}:
+    parameters: [{$ref: '#/components/parameters/Id'}]
+    get: {operationId: getApplication, responses: {'200': {description: OK}}}
+    patch: {operationId: updateApplication, responses: {'200': {description: OK}}}
+  /v0/applications/{id}/suspend:
+    parameters: [{$ref: '#/components/parameters/Id'}]
+    post: {operationId: suspendApplication, responses: {'200': {description: Suspended; resolution and tenant resolution are denied immediately}}}
+  /v0/applications/{id}/activate:
+    parameters: [{$ref: '#/components/parameters/Id'}]
+    post: {operationId: activateApplication, responses: {'200': {description: Reactivated}}}
+  /v0/applications/{id}/contract-grants:
+    parameters: [{$ref: '#/components/parameters/Id'}]
+    post:
+      operationId: createContractGrant
+      summary: Grant an application permissions on a contract (authorization policy).
+      requestBody:
+        required: true
+        content: {application/json: {schema: {$ref: '#/components/schemas/Grant'}}}
+      responses: {'201': {description: Created}, '200': {description: Identical grant already active}, '409': {description: Different active grant exists}, '422': {description: Unknown contract or permission}}
+    get: {operationId: listContractGrants, responses: {'200': {description: OK}}}
+  /v0/applications/{id}/contract-grants/{grant_id}:
+    delete:
+      operationId: revokeContractGrant
+      parameters: [{$ref: '#/components/parameters/Id'}, {name: grant_id, in: path, required: true, schema: {type: string, format: uuid}}]
+      responses: {'204': {description: Revoked}}
+  /v0/applications/{id}/bindings/{contract}:
+    parameters:
+      - {$ref: '#/components/parameters/Id'}
+      - {name: contract, in: path, required: true, schema: {type: string}}
+    put:
+      operationId: putBinding
+      summary: Explicitly bind an application's contract major to one implementation (routing policy).
+      requestBody:
+        required: true
+        content: {application/json: {schema: {$ref: '#/components/schemas/Binding'}}}
+      responses: {'200': {description: Bound}, '409': {description: Implementation disabled}, '422': {description: Implementation does not implement that contract major}}
+    delete:
+      operationId: deleteBinding
+      parameters:
+        - {name: major, in: query, required: true, schema: {type: integer}}
+        - {name: environment, in: query, required: true, schema: {type: string}}
+      responses: {'204': {description: Unbound}}
+  /v0/organizations/{org_id}/applications/{app_id}/tenants:
+    post:
+      operationId: createTenant
+      summary: Idempotently create the tenant for (organization, application).
+      parameters:
+        - {name: org_id, in: path, required: true, schema: {type: string}}
+        - {name: app_id, in: path, required: true, schema: {type: string, format: uuid}}
+      responses: {'201': {description: Created}, '200': {description: Already existed}}
+  /v0/tenants/{id}:
+    get: {operationId: getTenant, parameters: [{$ref: '#/components/parameters/Id'}], responses: {'200': {description: OK}}}
+  /v0/tenants/{id}/suspend:
+    post: {operationId: suspendTenant, parameters: [{$ref: '#/components/parameters/Id'}], responses: {'200': {description: Suspended}}}
+  /v0/tenants/{id}/activate:
+    post: {operationId: activateTenant, parameters: [{$ref: '#/components/parameters/Id'}], responses: {'200': {description: Active}}}
+  /v0/tenants/resolve:
+    post:
+      operationId: resolveTenant
+      summary: Derive the tenant context of a delegated user (application workload only).
+      description: |
+        The caller is an application workload. `user_token` is the end user's access token, verified
+        server-side. `organization_id` is a *selection* checked against the verified claims.
+      requestBody:
+        required: true
+        content: {application/json: {schema: {$ref: '#/components/schemas/ResolveTenant'}}}
+      responses:
+        '200': {description: Tenant context, content: {application/json: {schema: {$ref: '#/components/schemas/AuthContext'}}}}
+        '403': {$ref: '#/components/responses/Problem'}
+        '422': {description: Organization selection required}
+  /v0/contracts:
+    post:
+      operationId: publishContract
+      summary: Publish an immutable contract version (publisher).
+      requestBody:
+        required: true
+        content: {application/json: {schema: {$ref: '#/components/schemas/PublishContract'}}}
+      responses:
+        '201': {description: Published}
+        '200': {description: Same version and digest already published}
+        '409': {description: Same version, different content}
+        '422': {description: Breaking change inside a major version}
+  /v0/contracts/{name}/versions/{version}:
+    get:
+      operationId: getContractVersion
+      parameters:
+        - {name: name, in: path, required: true, schema: {type: string}}
+        - {name: version, in: path, required: true, schema: {type: string}}
+      responses: {'200': {description: OK}, '404': {description: Not found or not visible}}
+  /v0/contracts/resolve:
+    post:
+      operationId: resolveContract
+      summary: Resolve a contract to the endpoint of the bound, healthy implementation.
+      requestBody:
+        required: true
+        content: {application/json: {schema: {$ref: '#/components/schemas/ResolveContract'}}}
+      responses:
+        '200': {description: Resolution, content: {application/json: {schema: {$ref: '#/components/schemas/Resolution'}}}}
+        '403': {description: Not declared/granted, or application suspended}
+        '422': {description: binding_not_found or no_compatible_version}
+        '503': {description: no_healthy_deployment (never fails over to another implementation)}
+  /v0/implementations:
+    post:
+      operationId: registerImplementation
+      summary: Register or update an implementation and its deployments (approved deployment identity).
+      requestBody:
+        required: true
+        content: {application/json: {schema: {$ref: '#/components/schemas/RegisterImplementation'}}}
+      responses: {'200': {description: OK}, '403': {description: Identity not approved for this slug}, '422': {description: Unpublished contract, digest mismatch or rejected endpoint}}
+    get: {operationId: listImplementations, responses: {'200': {description: OK}}}
+  /v0/implementations/{id}:
+    parameters: [{$ref: '#/components/parameters/Id'}]
+    get: {operationId: getImplementation, responses: {'200': {description: OK}}}
+    patch: {operationId: updateImplementation, responses: {'200': {description: OK}}}
+  /v0/implementations/{id}/deployments:
+    post: {operationId: addDeployment, parameters: [{$ref: '#/components/parameters/Id'}], responses: {'200': {description: OK}}}
+  /v0/deployments/{id}:
+    delete: {operationId: deleteDeployment, parameters: [{$ref: '#/components/parameters/Id'}], responses: {'204': {description: Deleted}, '409': {description: Deployment is bound}}}
+  /v0/deployment-identities:
+    post: {operationId: approveDeploymentIdentity, responses: {'201': {description: Approved}}}
+    get: {operationId: listDeploymentIdentities, responses: {'200': {description: OK}}}
+  /v0/deployment-identities/{id}:
+    delete: {operationId: revokeDeploymentIdentity, parameters: [{$ref: '#/components/parameters/Id'}], responses: {'204': {description: Revoked}}}
+  /v0/authorize:
+    post:
+      operationId: authorizeCaller
+      summary: Implementation-side check that a calling application may use a contract (deployment identity).
+      requestBody:
+        required: true
+        content: {application/json: {schema: {$ref: '#/components/schemas/Authorize'}}}
+      responses: {'200': {description: Permissions and optional tenant}, '403': {description: Denied}}
+  /v0/operations/{id}:
+    get: {operationId: getOperation, parameters: [{$ref: '#/components/parameters/Id'}], responses: {'200': {description: OK}}}
+  /v0/audit:
+    get: {operationId: listAudit, responses: {'200': {description: Append-only audit entries}}}
+  /health/live:
+    get: {operationId: live, security: [], responses: {'200': {description: Process alive}}}
+  /health/ready:
+    get: {operationId: ready, security: [], responses: {'200': {description: Database reachable and migrated}, '503': {description: Not ready}}}
+  /metrics:
+    get: {operationId: metrics, security: [], description: Internal monitoring only; do not route through the public edge., responses: {'200': {description: Prometheus text}}}
+components:
+  securitySchemes:
+    bearer: {type: http, scheme: bearer, bearerFormat: JWT}
+  parameters:
+    Id: {name: id, in: path, required: true, schema: {type: string, format: uuid}}
+  responses:
+    Problem:
+      description: RFC 9457 problem
+      content: {application/problem+json: {schema: {$ref: '#/components/schemas/Problem'}}}
+  schemas:
+    Problem:
+      type: object
+      required: [status, code]
+      properties: {type: {type: string}, title: {type: string}, status: {type: integer}, code: {type: string}, detail: {type: string}}
+    OAuthClient:
+      type: object
+      required: [kind]
+      properties:
+        kind: {enum: [web, mobile, backend]}
+        redirect_uris: {type: array, items: {type: string}}
+        zitadel_client_id: {type: string, description: Required in link mode}
+    RegisterApplication:
+      type: object
+      required: [slug, display_name]
+      properties:
+        slug: {type: string, pattern: '^[a-z][a-z0-9-]{1,31}$'}
+        display_name: {type: string}
+        zitadel_project_id: {type: string}
+        oauth_clients: {type: array, items: {$ref: '#/components/schemas/OAuthClient'}}
+        requirements: {type: array, items: {type: object, required: [contract, version], properties: {contract: {type: string}, version: {type: string, examples: ['>=1.0.0 <2.0.0']}}}}
+    Grant:
+      type: object
+      required: [contract, permissions]
+      properties: {contract: {type: string}, permissions: {type: array, items: {type: string}}}
+    Binding:
+      type: object
+      required: [major, environment, implementation]
+      properties: {major: {type: integer}, environment: {type: string}, implementation: {type: string, description: Implementation slug}}
+    ResolveTenant:
+      type: object
+      required: [user_token]
+      properties: {user_token: {type: string}, organization_id: {type: string}, contract: {type: string}}
+    AuthContext:
+      type: object
+      properties:
+        subject_id: {type: string}
+        application_id: {type: string, format: uuid}
+        organization_id: {type: string}
+        tenant_id: {type: string, format: uuid}
+        roles: {type: array, items: {type: string}}
+        actor_type: {enum: [UserDelegated, Workload]}
+    PublishContract:
+      type: object
+      required: [manifest, openapi]
+      properties:
+        manifest: {type: object, required: [id, version], properties: {id: {type: string}, version: {type: string}, protocol: {const: http}, permissions: {type: array, items: {type: string}}}}
+        openapi: {type: string, description: OpenAPI 3.1 document (YAML or JSON text)}
+        semantics: {type: string}
+        digest: {type: string, description: Optional; must equal the server-computed digest}
+    ResolveContract:
+      type: object
+      required: [contract, version_constraint]
+      properties: {contract: {type: string}, version_constraint: {type: string}, environment: {type: string}}
+    Resolution:
+      type: object
+      required: [contract, resolved_version, protocol, endpoint, expires_in_seconds]
+      properties:
+        contract: {type: string}
+        resolved_version: {type: string}
+        protocol: {type: string}
+        endpoint: {type: string, description: Stable logical endpoint; never a container or pod IP}
+        permissions: {type: array, items: {type: string}}
+        expires_in_seconds: {type: integer}
+    RegisterImplementation:
+      type: object
+      required: [slug, release_version, implements]
+      properties:
+        slug: {type: string}
+        release_version: {type: string}
+        implements: {type: array, items: {type: object, required: [contract, version, digest], properties: {contract: {type: string}, version: {type: string}, digest: {type: string}}}}
+        deployments: {type: array, items: {type: object, required: [environment, endpoint], properties: {environment: {type: string}, endpoint: {type: string}}}}
+    Authorize:
+      type: object
+      required: [client_id, contract]
+      properties: {client_id: {type: string}, contract: {type: string}, environment: {type: string}, user_token: {type: string}, organization_id: {type: string}}

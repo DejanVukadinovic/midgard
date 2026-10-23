@@ -37,7 +37,7 @@ start() { # start <name> <command...>   (env inherited)
 }
 stop() {
   local f="$LOCAL/$1.pid"
-  [[ -f "$f" ]] && { kill "$(cat "$f")" 2>/dev/null || true; rm -f "$f"; }
+  if [[ -f "$f" ]]; then kill "$(cat "$f")" 2>/dev/null || true; rm -f "$f"; fi
 }
 
 core_env() {
@@ -51,6 +51,8 @@ core_env() {
 
 up() {
   load_env
+  for n in example-capability platform-core dev-idp; do stop "$n"; done   # never orphan a previous stack
+  sleep 1
   log "building binaries"
   (cd "$ROOT" && cargo build -q --bins) && (cd "$ROOT/examples/sample-application" && go build -o "$BIN/sample-application" .)
   log "preparing roles/databases"

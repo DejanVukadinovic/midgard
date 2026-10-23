@@ -88,10 +88,10 @@ impl CoreCredentials {
 
     pub async fn token(&self, http: &reqwest::Client) -> Result<String, String> {
         let mut c = self.cache.lock().await;
-        if let Some((t, exp)) = c.as_ref() {
-            if Instant::now() < *exp {
-                return Ok(t.clone());
-            }
+        if let Some((t, exp)) = c.as_ref()
+            && Instant::now() < *exp
+        {
+            return Ok(t.clone());
         }
         let resp = http
             .post(&self.token_url)
@@ -121,6 +121,9 @@ impl CoreCredentials {
     }
 }
 
+/// client_id -> (expiry, application, permissions)
+pub type AuthzCache = Arc<Mutex<HashMap<String, (Instant, String, Vec<String>)>>>;
+
 #[derive(Clone)]
 pub struct AppState {
     pub pool: PgPool,
@@ -129,7 +132,7 @@ pub struct AppState {
     pub creds: Arc<CoreCredentials>,
     pub http: reqwest::Client,
     /// Short-lived cache of tenant-less authorization decisions: client_id -> (expiry, application, permissions).
-    pub authz_cache: Arc<Mutex<HashMap<String, (Instant, String, Vec<String>)>>>,
+    pub authz_cache: AuthzCache,
     pub authz_ttl: Duration,
 }
 
@@ -184,16 +187,15 @@ async fn authorize(
         .client_id
         .clone()
         .ok_or_else(|| Problem::forbidden("token has no client identity"))?;
-    if user_token.is_none() {
-        if let Some((exp, app, perms)) = st.authz_cache.lock().unwrap().get(&client_id) {
-            if Instant::now() < *exp {
-                return Ok(Decision {
-                    application: app.clone(),
-                    permissions: perms.clone(),
-                    tenant: None,
-                });
-            }
-        }
+    if user_token.is_none()
+        && let Some((exp, app, perms)) = st.authz_cache.lock().unwrap().get(&client_id)
+        && Instant::now() < *exp
+    {
+        return Ok(Decision {
+            application: app.clone(),
+            permissions: perms.clone(),
+            tenant: None,
+        });
     }
     let core_token = st.creds.token(&st.http).await.map_err(|e| {
         tracing::error!(error = %e, "cannot obtain deployment identity token");

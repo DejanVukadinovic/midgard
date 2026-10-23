@@ -1,0 +1,111 @@
+name: ci
+on:
+  pull_request:
+  push:
+    branches: [main]
+permissions:
+  contents: read
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+env:
+  CARGO_TERM_COLOR: always
+  TEST_DATABASE_ADMIN_URL: postgres://midgard:midgard@localhost:5432/postgres
+
+jobs:
+  rust:
+    runs-on: ubuntu-24.04
+    services:
+      postgres:
+        image: postgres:16.4
+        env: {POSTGRES_USER: midgard, POSTGRES_PASSWORD: midgard}
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U midgard" --health-interval 5s --health-timeout 3s --health-retries 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@master
+        with: {toolchain: "1.97.0", components: "rustfmt, clippy"}
+      - uses: Swatinem/rust-cache@v2
+      - run: cargo fmt --all -- --check
+      - run: cargo clippy --workspace --all-targets --locked -- -D warnings
+      - run: cargo test --workspace --locked
+
+  go:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with: {go-version: "1.24"}
+      - run: test -z "$(gofmt -l sdk/go examples/sample-application)"
+      - run: cd sdk/go && go vet ./... && go test ./...
+      - run: cd examples/sample-application && go vet ./... && go test ./...
+      - name: SDK generation drift
+        run: make sdk-check
+
+  contracts:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@master
+        with: {toolchain: "1.97.0"}
+      - uses: Swatinem/rust-cache@v2
+      - name: Backward compatibility of published versions
+        run: make contracts-check
+      - name: Registry API document is valid YAML
+        run: python3 -c "import yaml,sys; yaml.safe_load(open('contracts/registry/v0/openapi.yaml'))"
+
+  compose-config:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - name: Validate Compose files and published-port policy (ENV-05)
+        run: tests/acceptance/ports.sh
+      - name: Docs command/link check
+        run: scripts/check-docs.sh
+
+  acceptance-local:
+    runs-on: ubuntu-24.04
+    services:
+      postgres:
+        image: postgres:16.4
+        env: {POSTGRES_USER: midgard, POSTGRES_PASSWORD: midgard}
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U midgard" --health-interval 5s --health-timeout 3s --health-retries 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@master
+        with: {toolchain: "1.97.0"}
+      - uses: actions/setup-go@v5
+        with: {go-version: "1.24"}
+      - uses: Swatinem/rust-cache@v2
+      - run: sudo apt-get update && sudo apt-get install -y --no-install-recommends postgresql-client jq
+      - name: Acceptance (processes on localhost, offline dev IdP)
+        run: make acceptance
+      - if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: acceptance-local-logs
+          path: .local/*.log   # logs never contain tokens/secrets (asserted by the acceptance run)
+
+  acceptance-compose:
+    # Quickstart exactly as documented in README.md, on clean volumes (OSS-01, OSS-07, OSS-15).
+    runs-on: ubuntu-24.04
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@master
+        with: {toolchain: "1.97.0"}
+      - uses: actions/setup-go@v5
+        with: {go-version: "1.24"}
+      - uses: Swatinem/rust-cache@v2
+      - run: cp .env.example .env
+      - run: make dev-up
+      - run: make bootstrap
+      - run: make acceptance-compose
+      - if: always()
+        run: docker compose --env-file .env -f deployments/compose/compose.yaml --profile dev-idp --profile demo logs --no-color > compose.log || true
+      - if: always()
+        uses: actions/upload-artifact@v4
+        with: {name: compose-logs, path: compose.log}

@@ -102,9 +102,13 @@ type StatusError struct {
 	Body   string
 }
 
-func (e *StatusError) Error() string { return fmt.Sprintf("upstream returned %d: %s", e.Status, e.Body) }
+func (e *StatusError) Error() string {
+	return fmt.Sprintf("upstream returned %d: %s", e.Status, e.Body)
+}
 
-func statusError(status int, body []byte) error { return &StatusError{Status: status, Body: string(body)} }
+func statusError(status int, body []byte) error {
+	return &StatusError{Status: status, Body: string(body)}
+}
 
 // Handler exposes the facade over HTTP. The browser's user token is forwarded as the delegated
 // identity; tenant context is always derived by the platform from it.

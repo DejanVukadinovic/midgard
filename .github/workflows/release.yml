@@ -1,0 +1,24 @@
+name: release
+# Dormant until the first tagged release. Manual trigger only; enabling tag triggers is part of the
+# release checklist (docs/contributing/release-checklist.md).
+on:
+  workflow_dispatch:
+    inputs:
+      tag: {description: "Release tag (vX.Y.Z)", required: true}
+permissions:
+  contents: read
+jobs:
+  verify-and-build:
+    runs-on: ubuntu-24.04
+    permissions: {contents: read}
+    steps:
+      - uses: actions/checkout@v4
+        with: {ref: "${{ inputs.tag }}"}
+      - uses: dtolnay/rust-toolchain@master
+        with: {toolchain: "1.97.0"}
+      - run: cargo build --release --locked --workspace
+      - run: |
+          mkdir dist && cp target/release/{platform-core,example-capability,contract-tool} dist/
+          (cd dist && sha256sum * > SHA256SUMS)
+      - uses: actions/upload-artifact@v4
+        with: {name: "midgard-${{ inputs.tag }}", path: dist}

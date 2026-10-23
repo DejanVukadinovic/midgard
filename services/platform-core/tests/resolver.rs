@@ -336,3 +336,106 @@ async fn endpoint_change_is_visible_after_reregistration() {
     assert_eq!(r["endpoint"], b.url);
     drop_db(env).await;
 }
+
+// SVC-05: one implementation, two contracts — independently granted and bound
+#[tokio::test]
+async fn implementation_may_serve_two_contracts_independently() {
+    let env = Env::new().await;
+    let (obroklik, fleet) = setup_apps(&env).await;
+    let a = env.publish_contract("1.0.0").await;
+    let other = json!({
+        "manifest": {"id": "platform.other", "version": "1.0.0", "permissions": ["other:read"]},
+        "openapi": "openapi: 3.1.0\ninfo: {title: o, version: '1'}\npaths:\n  /o:\n    get:\n      responses:\n        '200': {description: ok}\n",
+        "semantics": "",
+    });
+    let (s, b) = env
+        .call(
+            "POST",
+            "/v0/contracts",
+            Some(&env.token("publisher-client")),
+            Some(other),
+            &[],
+        )
+        .await;
+    assert_eq!(s, StatusCode::CREATED, "{b}");
+    env.allow_deployer("deployer-1", "example-*").await;
+    let svc = fake_service().await;
+    let t = env.token("deployer-client");
+    let (s, v) = env
+        .call(
+            "POST",
+            "/v0/implementations",
+            Some(&t),
+            Some(json!({"slug":"example-both","release_version":"0.1.0",
+                "implements":[{"contract":"platform.example","version":"1.0.0","digest":a["digest"]},{"contract":"platform.other","version":"1.0.0","digest":b["digest"]}],
+                "deployments":[{"environment":"local","endpoint":svc.url}]})),
+            &[],
+        )
+        .await;
+    assert_eq!(s, StatusCode::OK, "{v}");
+    env.wait_deployment(v["id"].as_str().unwrap(), "healthy")
+        .await;
+    // application requirements for the second contract
+    let (s, _) = env.op("PATCH", &format!("/v0/applications/{obroklik}"), Some(json!({"requirements":[{"contract":"platform.example","version":">=1.0.0 <2.0.0"},{"contract":"platform.other","version":">=1.0.0 <2.0.0"}]}))).await;
+    assert_eq!(s, StatusCode::OK);
+    for (contract, perm) in [
+        ("platform.example", "example:read"),
+        ("platform.other", "other:read"),
+    ] {
+        env.op(
+            "POST",
+            &format!("/v0/applications/{obroklik}/contract-grants"),
+            Some(json!({"contract":contract,"permissions":[perm]})),
+        )
+        .await;
+    }
+    // bind only the first: the second is granted but unbound
+    env.op(
+        "PUT",
+        &format!("/v0/applications/{obroklik}/bindings/platform.example"),
+        Some(json!({"major":1,"environment":"local","implementation":"example-both"})),
+    )
+    .await;
+    let t = env.token("obroklik-be");
+    let (s, _) = env.call("POST", RESOLVE, Some(&t), Some(rq()), &[]).await;
+    assert_eq!(s, StatusCode::OK);
+    let (s, v) = env
+        .call(
+            "POST",
+            RESOLVE,
+            Some(&t),
+            Some(json!({"contract":"platform.other","version_constraint":">=1.0.0 <2.0.0"})),
+            &[],
+        )
+        .await;
+    assert_eq!(s, StatusCode::UNPROCESSABLE_ENTITY, "{v}");
+    env.op(
+        "PUT",
+        &format!("/v0/applications/{obroklik}/bindings/platform.other"),
+        Some(json!({"major":1,"environment":"local","implementation":"example-both"})),
+    )
+    .await;
+    let (s, v) = env
+        .call(
+            "POST",
+            RESOLVE,
+            Some(&t),
+            Some(json!({"contract":"platform.other","version_constraint":">=1.0.0 <2.0.0"})),
+            &[],
+        )
+        .await;
+    assert_eq!(s, StatusCode::OK, "{v}");
+    // the other application got neither
+    let (s, _) = env
+        .call(
+            "POST",
+            RESOLVE,
+            Some(&env.token("fleet-be")),
+            Some(rq()),
+            &[],
+        )
+        .await;
+    assert_eq!(s, StatusCode::FORBIDDEN);
+    let _ = fleet;
+    drop_db(env).await;
+}

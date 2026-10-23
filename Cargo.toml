@@ -42,11 +42,11 @@ tracing-subscriber = { version = "0.3", features = ["env-filter", "json"] }
 url = "2"
 uuid = { version = "1", features = ["v4", "serde"] }
 
-platform-http = { path = "crates/platform-http" }
-platform-auth = { path = "crates/platform-auth" }
-platform-persistence = { path = "crates/platform-persistence" }
-platform-contracts = { path = "crates/platform-contracts" }
-platform-testkit = { path = "crates/platform-testkit" }
+platform-http = { path = "crates/platform-http", version = "0.1.0" }
+platform-auth = { path = "crates/platform-auth", version = "0.1.0" }
+platform-persistence = { path = "crates/platform-persistence", version = "0.1.0" }
+platform-contracts = { path = "crates/platform-contracts", version = "0.1.0" }
+platform-testkit = { path = "crates/platform-testkit", version = "0.1.0" }
 
 [profile.release]
 lto = "thin"

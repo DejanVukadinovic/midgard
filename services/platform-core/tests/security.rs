@@ -284,3 +284,31 @@ async fn rate_and_body_limits() {
     assert!(r.headers().contains_key("x-request-id"));
     drop_db(env).await;
 }
+
+// ENV-04: identity provider unreachable -> bounded, fail-closed behaviour; core stays up and ready
+#[tokio::test]
+async fn idp_outage_fails_closed_without_corrupting_state() {
+    let env = Env::with(
+        |c| c.jwks_url = "http://127.0.0.1:1/oauth/v2/keys".into(),
+        platform_core::provisioning::Provisioner::Link,
+    )
+    .await;
+    let tok = env.token("op-client");
+    let (s, v) = env
+        .call("GET", "/v0/applications", Some(&tok), None, &[])
+        .await;
+    assert_eq!(s, StatusCode::SERVICE_UNAVAILABLE, "{v}");
+    assert_eq!(v["code"], "idp_unavailable");
+    let (s, _) = env.call("GET", "/health/ready", None, None, &[]).await;
+    assert_eq!(
+        s,
+        StatusCode::OK,
+        "an IdP outage must not make core unready or crash it"
+    );
+    let n: i64 = sqlx::query_scalar("SELECT count(*) FROM applications")
+        .fetch_one(&env.owner_pool)
+        .await
+        .unwrap();
+    assert_eq!(n, 0);
+    drop_db(env).await;
+}

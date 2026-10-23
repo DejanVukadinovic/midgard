@@ -1,0 +1,7 @@
+# Local-development convenience ONLY: publishes loopback-bound ports so host tooling and the
+# acceptance script can reach the dev IdP and the sample service directly. Never use in production.
+services:
+  dev-idp:
+    ports: ["127.0.0.1:9000:9000"]
+  example-capability:
+    ports: ["127.0.0.1:8082:8080"]
