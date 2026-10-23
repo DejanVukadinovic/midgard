@@ -1,0 +1,5 @@
+[package]
+name="example-capability"
+version.workspace=true
+edition.workspace=true
+license.workspace=true

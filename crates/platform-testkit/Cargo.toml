@@ -1,0 +1,16 @@
+[package]
+name = "platform-testkit"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "Test-only OIDC identity provider (ES256 keys generated at runtime). Never use in production."
+
+[dependencies]
+axum.workspace = true
+base64.workspace = true
+jsonwebtoken.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+tokio.workspace = true
+p256 = { version = "0.13", features = ["pkcs8", "pem"] }
+rand_core = { version = "0.6", features = ["getrandom"] }
