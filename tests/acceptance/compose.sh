@@ -11,6 +11,8 @@ COMPOSE=(docker compose --env-file .env -f deployments/compose/compose.yaml -f d
 [[ "${FRESH:-0}" == 1 ]] && "${COMPOSE[@]}" down -v --remove-orphans
 deployments/compose/gen-dev-secrets.sh
 "${COMPOSE[@]}" up -d --build --wait platform-core dev-idp edge example-capability
+# Build the (profile-gated) sample application image now so `compose run` never builds/pulls on stdout later.
+"${COMPOSE[@]}" build sample-application >&2
 cargo build -q -p platform-contracts --bin contract-tool
 
 # The sample application must run INSIDE the Compose network to reach stable logical endpoints.
@@ -18,7 +20,7 @@ WRAP="$(mktemp)"; trap 'rm -f "$WRAP"' EXIT
 cat >"$WRAP" <<WRAPPER
 #!/usr/bin/env bash
 exec ${COMPOSE[*]} run --rm -T -e MIDGARD_CLIENT_ID -e MIDGARD_CLIENT_SECRET \\
-  -e MIDGARD_REGISTRY_URL=http://platform-core:8080 sample-application check "\$@"
+  -e MIDGARD_REGISTRY_URL=http://platform-core:8080 sample-application check "\$@" 2>>"${WRAP}.err"
 WRAPPER
 chmod +x "$WRAP"
 
