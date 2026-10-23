@@ -30,8 +30,8 @@ async fn main() -> anyhow::Result<()> {
         )
         .init();
     if std::env::args().nth(1).as_deref() == Some("migrate") {
-        let url = var("CAPABILITY_MIGRATION_DATABASE_URL")
-            .or_else(|| var("CAPABILITY_DATABASE_URL"))
+        let url = secret("CAPABILITY_MIGRATION_DATABASE_URL")
+            .or_else(|_| secret("CAPABILITY_DATABASE_URL"))
             .context("CAPABILITY_MIGRATION_DATABASE_URL required")?;
         MIGRATOR.run(&connect(&url, 2).await?).await?;
         tracing::info!("migrations applied");

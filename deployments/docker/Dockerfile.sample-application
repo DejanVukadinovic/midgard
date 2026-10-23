@@ -1,6 +1,6 @@
 # syntax=docker/dockerfile:1
 # Build context: repository root (the module uses a local replace of the SDK).
-FROM golang:1.25-bookworm AS build
+FROM golang:1.26-bookworm AS build
 WORKDIR /src
 COPY sdk/go ./sdk/go
 COPY examples/sample-application ./examples/sample-application
@@ -9,5 +9,6 @@ RUN CGO_ENABLED=0 go build -trimpath -o /out/sample-application .
 
 FROM gcr.io/distroless/static-debian12:nonroot
 COPY --from=build /out/sample-application /sample-application
+USER 65532:65532
 ENTRYPOINT ["/sample-application"]
 CMD ["serve"]
