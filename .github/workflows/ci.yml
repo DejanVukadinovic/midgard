@@ -36,7 +36,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-go@v5
-        with: {go-version: "1.24"}
+        with: {go-version: "1.25"}
       - run: test -z "$(gofmt -l sdk/go examples/sample-application)"
       - run: cd sdk/go && go vet ./... && go test ./...
       - run: cd examples/sample-application && go vet ./... && go test ./...
@@ -78,7 +78,7 @@ jobs:
       - uses: dtolnay/rust-toolchain@master
         with: {toolchain: "1.97.0"}
       - uses: actions/setup-go@v5
-        with: {go-version: "1.24"}
+        with: {go-version: "1.25"}
       - uses: Swatinem/rust-cache@v2
       - run: sudo apt-get update && sudo apt-get install -y --no-install-recommends postgresql-client jq
       - name: Acceptance (processes on localhost, offline dev IdP)
@@ -98,7 +98,7 @@ jobs:
       - uses: dtolnay/rust-toolchain@master
         with: {toolchain: "1.97.0"}
       - uses: actions/setup-go@v5
-        with: {go-version: "1.24"}
+        with: {go-version: "1.25"}
       - uses: Swatinem/rust-cache@v2
       - run: cp .env.example .env
       - run: make dev-up

@@ -1,6 +1,6 @@
 # syntax=docker/dockerfile:1
 # Build context: repository root (the module uses a local replace of the SDK).
-FROM golang:1.24-bookworm AS build
+FROM golang:1.25-bookworm AS build
 WORKDIR /src
 COPY sdk/go ./sdk/go
 COPY examples/sample-application ./examples/sample-application

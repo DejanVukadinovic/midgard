@@ -37,13 +37,13 @@ fn var(name: &str) -> Option<String> {
     env::var(name).ok().filter(|s| !s.is_empty())
 }
 
-fn file_or_var(name: &str) -> Option<String> {
+fn file_or_var(name: &str) -> anyhow::Result<Option<String>> {
     if let Some(p) = var(&format!("{name}_FILE")) {
-        return std::fs::read_to_string(p)
-            .ok()
-            .map(|s| s.trim().to_string());
+        let s = std::fs::read_to_string(&p)
+            .map_err(|e| anyhow::anyhow!("cannot read {name}_FILE ({p}): {e}"))?;
+        return Ok(Some(s.trim().to_string()));
     }
-    var(name)
+    Ok(var(name))
 }
 
 fn list(name: &str) -> Vec<String> {
@@ -89,9 +89,9 @@ impl Config {
         };
         let cfg = Self {
             bind_addr: var("PLATFORM_BIND_ADDR").unwrap_or_else(|| "0.0.0.0:8080".into()),
-            database_url: file_or_var("PLATFORM_DATABASE_URL")
+            database_url: file_or_var("PLATFORM_DATABASE_URL")?
                 .ok_or_else(|| anyhow::anyhow!("PLATFORM_DATABASE_URL is required"))?,
-            migration_database_url: file_or_var("PLATFORM_MIGRATION_DATABASE_URL"),
+            migration_database_url: file_or_var("PLATFORM_MIGRATION_DATABASE_URL")?,
             issuer,
             jwks_url,
             audience: var("PLATFORM_AUDIENCE").unwrap_or_else(|| "midgard-core".into()),
@@ -100,7 +100,7 @@ impl Config {
             publishers,
             provisioner,
             zitadel_api_url: var("ZITADEL_API_URL"),
-            zitadel_api_token: file_or_var("ZITADEL_API_TOKEN"),
+            zitadel_api_token: file_or_var("ZITADEL_API_TOKEN")?,
             zitadel_org_id: var("ZITADEL_ORG_ID"),
             health_check_interval: Duration::from_secs(num(
                 "REGISTRY_HEALTH_CHECK_INTERVAL_SECONDS",

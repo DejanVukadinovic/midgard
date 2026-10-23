@@ -3,7 +3,8 @@
 # Idempotent: existing files are kept, so re-running never rotates working credentials.
 set -euo pipefail
 cd "$(dirname "$0")"
-umask 077
+# Containers run as non-root uids, so bind-mounted secret files must be world-readable on the dev host.
+umask 022
 mkdir -p .secrets
 gen() { head -c 24 /dev/urandom | od -An -tx1 | tr -d ' \n'; }
 put() { [[ -f ".secrets/$1" ]] || printf '%s' "$2" >".secrets/$1"; }
@@ -29,4 +30,5 @@ cat >.secrets/zitadel.env <<ENV
 ZITADEL_DATABASE_POSTGRES_USER_PASSWORD=$(val pw_zitadel_db)
 ZITADEL_DATABASE_POSTGRES_ADMIN_PASSWORD=$(val pg_superuser_password)
 ENV
+chmod 644 .secrets/* 2>/dev/null || true
 echo "secrets ready in deployments/compose/.secrets (ignored by git; local development only)"
