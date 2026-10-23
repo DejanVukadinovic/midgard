@@ -31,7 +31,8 @@
       "subject": "svc-obroklik",
       "audiences": [
         "midgard-core",
-        "platform.example"
+        "platform.example",
+        "example.echo"
       ]
     },
     {
@@ -40,7 +41,16 @@
       "subject": "svc-fleet",
       "audiences": [
         "midgard-core",
-        "platform.example"
+        "platform.example",
+        "example.echo"
+      ]
+    },
+    {
+      "client_id": "echo-provider",
+      "client_secret": "dev-only-echo-provider",
+      "subject": "example-echo-provider",
+      "audiences": [
+        "midgard-core"
       ]
     }
   ],

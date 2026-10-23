@@ -63,12 +63,21 @@ impl MessageBus for MemoryBus {
         }
         let mut s = self.st.lock().unwrap();
         if let Some(seq) = s.ids.get(&msg.id) {
-            return Ok(PubAck { sequence: *seq, duplicate: true });
+            return Ok(PubAck {
+                sequence: *seq,
+                duplicate: true,
+            });
         }
-        s.log.push(Stored { destination: destination.into(), msg: msg.clone() });
+        s.log.push(Stored {
+            destination: destination.into(),
+            msg: msg.clone(),
+        });
         let seq = s.log.len() as u64;
         s.ids.insert(msg.id, seq);
-        Ok(PubAck { sequence: seq, duplicate: false })
+        Ok(PubAck {
+            sequence: seq,
+            duplicate: false,
+        })
     }
 
     async fn consumer(&self, cfg: ConsumerConfig) -> Result<Box<dyn Consumer>, BusError> {
@@ -80,7 +89,10 @@ impl MessageBus for MemoryBus {
             redeliver: VecDeque::new(),
             exhausted: BTreeSet::new(),
         });
-        Ok(Box::new(MemConsumer { name: cfg.name, st: self.st.clone() }))
+        Ok(Box::new(MemConsumer {
+            name: cfg.name,
+            st: self.st.clone(),
+        }))
     }
 }
 
@@ -126,7 +138,11 @@ impl MemConsumer {
             log[seq].destination.clone(),
             log[seq].msg.clone(),
             attempt,
-            Box::new(MemAcker { name: self.name.clone(), seq, st: self.st.clone() }),
+            Box::new(MemAcker {
+                name: self.name.clone(),
+                seq,
+                st: self.st.clone(),
+            }),
         ))
     }
 }
@@ -135,7 +151,9 @@ fn requeue(c: &mut CState, seq: usize, attempt: u32, now: Instant, delay: Option
     if attempt >= c.cfg.max_deliver {
         c.exhausted.insert(seq);
     } else {
-        let d = delay.or_else(|| backoff_for(&c.cfg, attempt)).unwrap_or_default();
+        let d = delay
+            .or_else(|| backoff_for(&c.cfg, attempt))
+            .unwrap_or_default();
         c.redeliver.push_back((now + d, seq, attempt));
     }
 }
@@ -197,7 +215,9 @@ mod tests {
     #[tokio::test]
     async fn exhausted_unacked_messages_are_reported() {
         let bus = MemoryBus::new();
-        bus.publish("t.x", crate::conformance::msg("e1")).await.unwrap();
+        bus.publish("t.x", crate::conformance::msg("e1"))
+            .await
+            .unwrap();
         let mut cf = crate::conformance::cfg("t", "e", "t.x");
         cf.max_deliver = 2;
         cf.ack_wait = Duration::from_millis(20);

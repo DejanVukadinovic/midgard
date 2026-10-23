@@ -85,7 +85,12 @@ pub struct Delivery {
 
 impl Delivery {
     pub fn new(destination: String, message: Message, attempt: u32, acker: Box<dyn Acker>) -> Self {
-        Self { destination, message, attempt, acker }
+        Self {
+            destination,
+            message,
+            attempt,
+            acker,
+        }
     }
     pub async fn ack(self) -> Result<(), BusError> {
         self.acker.ack().await
@@ -168,7 +173,9 @@ pub fn valid_publish_destination(d: &str) -> bool {
     !d.is_empty()
         && d.len() <= 255
         && d.split('.').all(|t| {
-            !t.is_empty() && t.chars().all(|c| c.is_ascii_alphanumeric() || c == '-' || c == '_')
+            !t.is_empty()
+                && t.chars()
+                    .all(|c| c.is_ascii_alphanumeric() || c == '-' || c == '_')
         })
 }
 

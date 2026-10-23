@@ -7,8 +7,8 @@ use serde_json::{Value, json};
 use crate::{
     authn::{ApiJson, Caller},
     common::{
-        active_grant, app_for_client, require_active, resolve_user_context, valid_contract_name,
-        valid_org_id,
+        active_grant, app_for_client, app_for_slug, require_active, resolve_user_context,
+        valid_contract_name, valid_org_id,
     },
     error::db,
     routes::identities::{matches_pattern, patterns_for},
@@ -18,7 +18,14 @@ use crate::{
 #[derive(Deserialize)]
 pub struct AuthorizeReq {
     /// Client id taken from the *verified* workload token by the implementation.
-    pub client_id: String,
+    /// Exactly one of `client_id` / `application` is required.
+    #[serde(default)]
+    pub client_id: Option<String>,
+    /// Application slug established from a broker-authenticated identity (e.g. the NATS user
+    /// allowed to publish only to `<destination>.<slug>`). The implementation must derive it from
+    /// the authenticated transport, never from message content.
+    #[serde(default)]
+    pub application: Option<String>,
     pub contract: String,
     #[serde(default)]
     pub environment: Option<String>,
@@ -56,9 +63,17 @@ pub async fn authorize(
     }
     let deny =
         || Problem::forbidden("caller is not authorized for this contract on this implementation");
-    let app = app_for_client(&st.pool, &r.client_id)
-        .await?
-        .ok_or_else(deny)?;
+    let app = match (&r.client_id, &r.application) {
+        (Some(c), None) => app_for_client(&st.pool, c).await?,
+        (None, Some(slug)) => app_for_slug(&st.pool, slug).await?,
+        _ => {
+            return Err(Problem::bad_request(
+                "invalid_request",
+                "exactly one of client_id or application is required",
+            ));
+        }
+    }
+    .ok_or_else(deny)?;
     require_active(&app).map_err(|_| deny())?;
     let permissions = active_grant(&st.pool, app.id, &r.contract)
         .await?

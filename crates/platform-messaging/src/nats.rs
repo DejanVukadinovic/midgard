@@ -47,7 +47,13 @@ pub struct NatsConfig {
 /// JetStream consumer names may not contain `.`, `*`, `>` or whitespace.
 fn consumer_name(n: &str) -> String {
     n.chars()
-        .map(|c| if c.is_ascii_alphanumeric() || c == '-' || c == '_' { c } else { '-' })
+        .map(|c| {
+            if c.is_ascii_alphanumeric() || c == '-' || c == '_' {
+                c
+            } else {
+                '-'
+            }
+        })
         .collect()
 }
 
@@ -64,7 +70,9 @@ fn broker<E: std::fmt::Display>(e: E) -> BusError {
 impl NatsBus {
     pub async fn connect(cfg: NatsConfig) -> Result<Self, BusError> {
         let opts = match (&cfg.user, &cfg.password) {
-            (Some(u), Some(p)) => async_nats::ConnectOptions::with_user_and_password(u.clone(), p.clone()),
+            (Some(u), Some(p)) => {
+                async_nats::ConnectOptions::with_user_and_password(u.clone(), p.clone())
+            }
             _ => async_nats::ConnectOptions::new(),
         };
         let client = opts.connect(&cfg.url).await.map_err(broker)?;
@@ -83,7 +91,11 @@ impl NatsBus {
         } else {
             js.get_stream(&cfg.stream).await.map_err(broker)?
         };
-        Ok(Self { provision: cfg.provision, js, stream })
+        Ok(Self {
+            provision: cfg.provision,
+            js,
+            stream,
+        })
     }
 }
 
@@ -110,13 +122,20 @@ impl MessageBus for NatsBus {
             .map_err(|e| BusError::PublishFailed(e.to_string()))?
             .await
             .map_err(|e| BusError::PublishFailed(e.to_string()))?;
-        Ok(PubAck { sequence: ack.sequence, duplicate: ack.duplicate })
+        Ok(PubAck {
+            sequence: ack.sequence,
+            duplicate: ack.duplicate,
+        })
     }
 
     async fn consumer(&self, cfg: ConsumerConfig) -> Result<Box<dyn Consumer>, BusError> {
         if !self.provision {
             // Runtime identities cannot create consumers; deployment pre-creates them.
-            let c = self.stream.get_consumer(&consumer_name(&cfg.name)).await.map_err(broker)?;
+            let c = self
+                .stream
+                .get_consumer(&consumer_name(&cfg.name))
+                .await
+                .map_err(broker)?;
             return Ok(Box::new(NatsConsumer { c }));
         }
         let c = self
@@ -177,7 +196,8 @@ impl Consumer for NatsConsumer {
         }
         let message = Message {
             id: hdr(async_nats::header::NATS_MESSAGE_ID).unwrap_or_default(),
-            correlation_id: hdr(IntoHeaderName::into_header_name(H_CORRELATION)).unwrap_or_default(),
+            correlation_id: hdr(IntoHeaderName::into_header_name(H_CORRELATION))
+                .unwrap_or_default(),
             traceparent: hdr(IntoHeaderName::into_header_name(H_TRACEPARENT)),
             headers,
             payload: m.payload.to_vec(),
@@ -200,9 +220,19 @@ impl Acker for NatsAcker {
         self.0.lock().await.double_ack().await.map_err(broker)
     }
     async fn nak(&self, delay: Option<Duration>) -> Result<(), BusError> {
-        self.0.lock().await.ack_with(AckKind::Nak(delay)).await.map_err(broker)
+        self.0
+            .lock()
+            .await
+            .ack_with(AckKind::Nak(delay))
+            .await
+            .map_err(broker)
     }
     async fn term(&self) -> Result<(), BusError> {
-        self.0.lock().await.ack_with(AckKind::Term).await.map_err(broker)
+        self.0
+            .lock()
+            .await
+            .ack_with(AckKind::Term)
+            .await
+            .map_err(broker)
     }
 }

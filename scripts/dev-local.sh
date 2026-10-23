@@ -16,6 +16,8 @@ PGPASSWORD="$(sed -E 's#^postgres://[^:]*:([^@]*)@.*#\1#' <<<"$PG_ADMIN_URL")"
 export PGHOST="${PG_HOSTPORT%%:*}" PGPORT="${PG_HOSTPORT##*:}" PGUSER PGPASSWORD
 
 PORT_CORE=${PORT_CORE:-8080} PORT_IDP=${PORT_IDP:-9000} PORT_CAP=${PORT_CAP:-8082}
+# v0.2 fixture (WITH_V02=1): NATS JetStream + the language-independent echo provider.
+PORT_NATS=${PORT_NATS:-4222} PORT_ECHO=${PORT_ECHO:-8083} NATS_SERVER_BIN=${NATS_SERVER_BIN:-nats-server}
 BIN="$ROOT/target/debug"
 
 gen() { openssl rand -hex 16 2>/dev/null || head -c16 /dev/urandom | od -An -tx1 | tr -d ' \n'; }
@@ -26,6 +28,10 @@ load_env() {
       echo "MIDGARD_OWNER_PASSWORD=$(gen)"; echo "MIDGARD_APP_PASSWORD=$(gen)"
       echo "CAPABILITY_OWNER_PASSWORD=$(gen)"; echo "CAPABILITY_APP_PASSWORD=$(gen)"
     } >"$LOCAL/env"
+  fi
+  if ! grep -q '^NATS_ADMIN_PASSWORD=' "$LOCAL/env"; then
+    umask 077
+    { echo "NATS_ADMIN_PASSWORD=pw$(gen)"; echo "NATS_PROVIDER_PASSWORD=pw$(gen)"; echo "NATS_CLIENT_PASSWORD=pw$(gen)"; } >>"$LOCAL/env"
   fi
   set -a; source "$LOCAL/env"; set +a
 }
@@ -45,13 +51,13 @@ core_env() {
   export PLATFORM_DATABASE_URL="postgres://midgard_app:$MIDGARD_APP_PASSWORD@$PG_HOSTPORT/midgard_core"
   export PLATFORM_MIGRATION_DATABASE_URL="postgres://midgard_owner:$MIDGARD_OWNER_PASSWORD@$PG_HOSTPORT/midgard_core"
   export PLATFORM_AUDIENCE=midgard-core PLATFORM_OPERATOR_SUBJECTS=operator-1
-  export PLATFORM_PUBLISHER_SUBJECTS='publisher-1=platform.|examples.'
+  export PLATFORM_PUBLISHER_SUBJECTS='publisher-1=platform.|example.|examples.'
   export REGISTRY_ENDPOINT_ALLOWED_HOSTS=localhost REGISTRY_HEALTH_CHECK_INTERVAL_SECONDS=2
 }
 
 up() {
   load_env
-  for n in example-capability platform-core dev-idp; do stop "$n"; done   # never orphan a previous stack
+  for n in echo-provider nats example-capability platform-core dev-idp; do stop "$n"; done   # never orphan a previous stack
   sleep 1
   log "building binaries"
   (cd "$ROOT" && cargo build -q --bins) && (cd "$ROOT/examples/sample-application" && go build -o "$BIN/sample-application" .)
@@ -73,12 +79,39 @@ up() {
       CAPABILITY_SELF_REGISTER=true CAPABILITY_PUBLIC_ENDPOINT="http://localhost:$PORT_CAP"
     start example-capability "$BIN/example-capability" )
   wait_http "http://localhost:$PORT_CAP/health/ready" 60
+  [[ "${WITH_V02:-}" == 1 ]] && up_v02
   log "stack is up: core=:$PORT_CORE idp=:$PORT_IDP capability=:$PORT_CAP (logs in .local/)"
+}
+
+up_v02() {
+  need "$NATS_SERVER_BIN"
+  for n in echo-provider nats; do stop "$n"; done
+  sleep 1
+  log "building the echo fixture"
+  (cd "$ROOT/examples/echo" && go build -o "$BIN/echo" .)
+  mkdir -p "$LOCAL/nats"
+  ( export NATS_STORE_DIR="$LOCAL/nats" NATS_ADMIN_PASSWORD NATS_PROVIDER_PASSWORD NATS_CLIENT_PASSWORD
+    start nats "$NATS_SERVER_BIN" -c "$ROOT/deployments/compose/nats/nats.conf" -p "$PORT_NATS" -m 0 )
+  wait_port 127.0.0.1 "$PORT_NATS" 30
+  sleep 1
+  ECHO_NATS_URL="nats://127.0.0.1:$PORT_NATS" ECHO_NATS_ADMIN_PASSWORD="$NATS_ADMIN_PASSWORD" "$BIN/echo" nats-init
+  ( export ECHO_BIND_ADDR="127.0.0.1:$PORT_ECHO" ECHO_ISSUER="http://localhost:$PORT_IDP" ECHO_CORE_URL="http://localhost:$PORT_CORE" \
+      ECHO_CLIENT_ID=echo-provider ECHO_CLIENT_SECRET=dev-only-echo-provider ECHO_PUBLIC_ENDPOINT="http://localhost:$PORT_ECHO" \
+      ECHO_NATS_URL="nats://127.0.0.1:$PORT_NATS" ECHO_NATS_USER=provider ECHO_NATS_PASSWORD="$NATS_PROVIDER_PASSWORD" ECHO_DEBUG=true
+    start echo-provider "$BIN/echo" provider )
+  wait_http "http://localhost:$PORT_ECHO/health/ready" 30
+  log "v0.2 fixture up: nats=:$PORT_NATS echo-provider=:$PORT_ECHO"
+}
+
+wait_port() { # wait_port <host> <port> <seconds>
+  local i
+  for ((i = 0; i < $3; i++)); do (exec 3<>"/dev/tcp/$1/$2") 2>/dev/null && return 0; sleep 1; done
+  die "timed out waiting for $1:$2"
 }
 
 case "${1:-}" in
   up) up ;;
-  down) for n in example-capability platform-core dev-idp; do stop "$n"; done; log "stopped" ;;
+  down) for n in echo-provider nats example-capability platform-core dev-idp; do stop "$n"; done; log "stopped" ;;
   restart-core)
     load_env; stop platform-core; sleep 1; (core_env; start platform-core "$BIN/platform-core" serve)
     wait_http "http://localhost:$PORT_CORE/health/ready" 60 ;;
@@ -87,6 +120,8 @@ case "${1:-}" in
 export PLATFORM_URL=http://localhost:$PORT_CORE IDP_URL=http://localhost:$PORT_IDP
 export OPERATOR_CLIENT_SECRET=dev-only-operator PUBLISHER_CLIENT_SECRET=dev-only-publisher
 export CAPABILITY_URL=http://localhost:$PORT_CAP SAMPLE_APP=$BIN/sample-application CONTRACT_TOOL=$BIN/contract-tool
+export PROVIDER_URL=http://localhost:$PORT_ECHO ECHO_BIN=$BIN/echo ECHO_NATS_URL=nats://127.0.0.1:$PORT_NATS
+export NATS_CLIENT_PASSWORD=$(grep '^NATS_CLIENT_PASSWORD=' "$LOCAL/env" 2>/dev/null | cut -d= -f2)
 ENV
     ;;
   *) echo "usage: $0 up|down|restart-core|env" >&2; exit 2 ;;
