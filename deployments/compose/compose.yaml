@@ -127,7 +127,9 @@ services:
 
   dev-idp:
     <<: *hardening
-    profiles: [dev-idp]
+    # `test`/`demo` are listed so `docker compose --profile test ...` (which overrides COMPOSE_PROFILES)
+    # still brings the IdP up for the services that depend on it.
+    profiles: [dev-idp, test, demo]
     image: midgard/dev-idp:dev
     build: {context: ../.., dockerfile: deployments/docker/Dockerfile.rust, target: dev-idp}
     environment:

@@ -288,15 +288,27 @@ async fn multi_interface_resolution_and_provider_authorization() {
     let by_app = |app: &'static str, iface: &'static str| {
         let (env, dep) = (&env, dep.clone());
         async move {
-            env.call("POST", "/v0/authorize", Some(&dep), Some(json!({"application": app, "contract": NAME, "interface": iface})), &[])
-                .await
-                .0
+            env.call(
+                "POST",
+                "/v0/authorize",
+                Some(&dep),
+                Some(json!({"application": app, "contract": NAME, "interface": iface})),
+                &[],
+            )
+            .await
+            .0
         }
     };
     assert_eq!(by_app("obroklik", "queue").await, StatusCode::OK);
     assert_eq!(by_app("nobody", "queue").await, StatusCode::FORBIDDEN);
     let (s, _) = env
-        .call("POST", "/v0/authorize", Some(&dep), Some(json!({"application": "obroklik", "client_id": "obroklik-be", "contract": NAME})), &[])
+        .call(
+            "POST",
+            "/v0/authorize",
+            Some(&dep),
+            Some(json!({"application": "obroklik", "client_id": "obroklik-be", "contract": NAME})),
+            &[],
+        )
         .await;
     assert_eq!(s, StatusCode::BAD_REQUEST, "exactly one identity selector");
 

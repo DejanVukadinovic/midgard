@@ -9,3 +9,4 @@ deployments/compose/.secrets/
 *.log
 .DS_Store
 sdk/go/vendor/
+examples/echo/echo
