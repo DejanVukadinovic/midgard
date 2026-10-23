@@ -1,0 +1,31 @@
+openapi: 3.1.0
+info:
+  title: Synthetic Echo API
+  version: 1.0.0
+paths:
+  /submit:
+    post:
+      operationId: submitEcho
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [id, value]
+              properties:
+                id: { type: string }
+                value: { type: string }
+      responses:
+        '202':
+          description: Accepted for processing (not completed)
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [id, status]
+                properties:
+                  id: { type: string }
+                  status: { type: string, const: accepted }
+        '401': { description: Unauthenticated }
+        '403': { description: Unauthorized }

@@ -86,11 +86,11 @@ async fn resolve_inner(st: &AppState, caller: &Caller, req: ResolveReq) -> ApiRe
             "no implementation is bound for this contract and environment",
         ));
     }
-    let mut chosen: Option<(Uuid, String, String, String)> = None; // impl_id, impl_status, version, protocol
+    let mut chosen: Option<(Uuid, String, String, String, Uuid, String, Value)> = None; // impl_id, impl_status, version, protocol, contract_id, digest, manifest
     'outer: for b in &bindings {
         let (major, impl_id): (i32, Uuid) = (b.get("major_version"), b.get("implementation_id"));
         let rows = sqlx::query(
-            "SELECT c.version, c.manifest->>'protocol' AS protocol FROM implementation_contracts ic JOIN contracts c ON c.id = ic.contract_id
+            "SELECT c.id, c.version, c.digest, c.manifest, c.manifest->>'protocol' AS protocol FROM implementation_contracts ic JOIN contracts c ON c.id = ic.contract_id
               WHERE ic.implementation_id=$1 AND c.name=$2 AND c.major=$3 ORDER BY c.minor DESC, c.patch DESC",
         )
         .bind(impl_id)
@@ -108,12 +108,16 @@ async fn resolve_inner(st: &AppState, caller: &Caller, req: ResolveReq) -> ApiRe
                     v,
                     r.get::<Option<String>, _>("protocol")
                         .unwrap_or_else(|| "http".into()),
+                    r.get("id"),
+                    r.get("digest"),
+                    r.get("manifest"),
                 ));
                 break 'outer;
             }
         }
     }
-    let Some((impl_id, impl_status, version, protocol)) = chosen else {
+    let Some((impl_id, impl_status, version, protocol, contract_id, digest, manifest)) = chosen
+    else {
         return Err(Problem::unprocessable(
             "no_compatible_version",
             "no bound implementation satisfies the requested version constraint",
@@ -143,12 +147,108 @@ async fn resolve_inner(st: &AppState, caller: &Caller, req: ResolveReq) -> ApiRe
             ));
         }
     };
-    Ok(Json(json!({
+    let mut out = json!({
         "contract": req.contract,
         "resolved_version": version,
         "protocol": protocol,
         "endpoint": endpoint,
         "permissions": permissions,
         "expires_in_seconds": st.cfg.resolution_ttl_secs,
-    })))
+    });
+    if manifest.get("midgard").and_then(Value::as_str) == Some("0.2") {
+        v02_details(
+            st,
+            &mut out,
+            &req.contract,
+            &version,
+            impl_id,
+            contract_id,
+            &digest,
+            &manifest,
+            &permissions,
+        )
+        .await?;
+    }
+    Ok(Json(out))
+}
+
+/// v0.2 resolved contract: immutable identity + digest, the permission the provider will
+/// enforce, and only the interfaces that the bound implementation advertises and that a
+/// service-identity caller may use. Resolution is not authorization: the provider/broker
+/// re-checks on every invocation.
+#[allow(clippy::too_many_arguments)]
+async fn v02_details(
+    st: &AppState,
+    out: &mut Value,
+    contract: &str,
+    version: &str,
+    impl_id: Uuid,
+    contract_id: Uuid,
+    digest: &str,
+    manifest: &Value,
+    granted: &[String],
+) -> ApiResult<()> {
+    let required = manifest["authorization"]["permission"]
+        .as_str()
+        .unwrap_or_default();
+    if !granted.iter().any(|p| p == required) {
+        return Err(Problem::forbidden(
+            "access to this contract is not granted to the application",
+        ));
+    }
+    let rows = sqlx::query(
+        "SELECT ci.interface_id, ci.protocol, ci.spec_type, ci.operation, ci.document_digest, ci.callers, ci.summary,
+                ii.location, ii.destination, ii.broker_binding
+           FROM contract_interfaces ci
+           JOIN implementation_interfaces ii ON ii.contract_id = ci.contract_id AND ii.interface_id = ci.interface_id
+          WHERE ci.contract_id=$1 AND ii.implementation_id=$2
+          ORDER BY ci.interface_id",
+    )
+    .bind(contract_id)
+    .bind(impl_id)
+    .fetch_all(&st.pool)
+    .await
+    .map_err(db)?;
+    // Workload tokens identify a service; user-delegated use is checked by the provider via /v0/authorize.
+    let interfaces: Vec<Value> = rows
+        .into_iter()
+        .filter(|r| r.get::<Vec<String>, _>("callers").iter().any(|c| c == "service"))
+        .map(|r| {
+            let id: String = r.get("interface_id");
+            let mut v = json!({
+                "id": id,
+                "protocol": r.get::<String,_>("protocol"),
+                "operation": r.get::<String,_>("operation"),
+                "callers": r.get::<Vec<String>,_>("callers"),
+                "specification": {
+                    "type": r.get::<String,_>("spec_type"),
+                    "digest": r.get::<String,_>("document_digest"),
+                    "summary": r.get::<Value,_>("summary"),
+                    "document_path": format!("/v0/contracts/{contract}/versions/{version}/interfaces/{id}/document"),
+                },
+            });
+            if let Some(l) = r.get::<Option<String>, _>("location") {
+                v["location"] = json!(l);
+            } else {
+                v["destination"] = json!(r.get::<Option<String>, _>("destination"));
+                v["broker_binding"] = json!(r.get::<Option<String>, _>("broker_binding"));
+            }
+            v
+        })
+        .collect();
+    if interfaces.is_empty() {
+        return Err(Problem::unprocessable(
+            "no_authorized_interface",
+            "the bound implementation advertises no interface this caller may use",
+        ));
+    }
+    out["digest"] = json!(digest);
+    out["interfaces"] = Value::Array(interfaces);
+    out["authorization"] = json!({
+        "permission": required,
+        "context": manifest["authorization"]["context"],
+        "delegation": manifest["authorization"]["delegation"],
+    });
+    out["execution"] = manifest["execution"].clone();
+    Ok(())
 }

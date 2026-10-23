@@ -1,0 +1,39 @@
+asyncapi: 3.0.0
+info:
+  title: Synthetic Echo Messaging API
+  version: 1.0.0
+  description: >
+    Durable command submission. A publish acknowledgment means the message was accepted
+    for processing (same semantics as HTTP 202), not that processing completed.
+defaultContentType: application/json
+channels:
+  submit:
+    address: example.echo.submit   # logical name; the deployment maps it to a broker destination
+    messages:
+      submitEcho:
+        $ref: '#/components/messages/submitEcho'
+operations:
+  submitEcho:
+    action: receive                # the provider receives what the client sends
+    channel:
+      $ref: '#/channels/submit'
+    messages:
+      - $ref: '#/channels/submit/messages/submitEcho'
+components:
+  messages:
+    submitEcho:
+      name: submitEcho
+      correlationId:
+        location: $message.header#/correlation_id
+      headers:
+        type: object
+        required: [correlation_id]
+        properties:
+          correlation_id: { type: string }
+          idempotency_key: { type: string }
+      payload:
+        type: object
+        required: [id, value]
+        properties:
+          id: { type: string }
+          value: { type: string }

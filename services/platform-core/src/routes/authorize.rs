@@ -26,6 +26,10 @@ pub struct AuthorizeReq {
     pub user_token: Option<String>,
     #[serde(default)]
     pub organization_id: Option<String>,
+    /// v0.2: the interface being invoked. When set, the contract's interface and capability
+    /// authorization (permission, caller kinds) are enforced for this invocation.
+    #[serde(default)]
+    pub interface: Option<String>,
 }
 
 /// Called by an implementation (authenticated as its approved deployment identity) to learn
@@ -78,6 +82,38 @@ pub async fn authorize(
         .any(|s| patterns.iter().any(|p| matches_pattern(p, s)))
     {
         return Err(deny());
+    }
+    if let Some(iface) = &r.interface {
+        let row = sqlx::query(
+            "SELECT ci.callers, c.manifest FROM contract_interfaces ci JOIN contracts c ON c.id=ci.contract_id
+              JOIN implementation_interfaces ii ON ii.contract_id=ci.contract_id AND ii.interface_id=ci.interface_id
+              JOIN implementations i ON i.id=ii.implementation_id AND i.slug = ANY($4)
+              JOIN contract_bindings b ON b.implementation_id=i.id AND b.application_id=$5 AND b.environment=$3
+             WHERE c.name=$1 AND ci.interface_id=$2 AND b.major_version=c.major
+             LIMIT 1",
+        )
+        .bind(&r.contract)
+        .bind(iface)
+        .bind(&env)
+        .bind(&slugs)
+        .bind(app.id)
+        .fetch_optional(&st.pool)
+        .await
+        .map_err(db)?
+        .ok_or_else(deny)?;
+        let callers: Vec<String> = row.get("callers");
+        let kind = if r.user_token.is_some() {
+            "user"
+        } else {
+            "service"
+        };
+        let manifest: Value = row.get("manifest");
+        let required = manifest["authorization"]["permission"]
+            .as_str()
+            .unwrap_or_default();
+        if !callers.iter().any(|c| c == kind) || !permissions.iter().any(|p| p == required) {
+            return Err(deny());
+        }
     }
     let tenant = match &r.user_token {
         Some(t) => Some(resolve_user_context(&st, &app, t, r.organization_id.as_deref()).await?),

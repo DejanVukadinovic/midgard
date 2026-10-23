@@ -2,6 +2,7 @@
 
 pub mod compat;
 mod manifest;
+pub mod v02;
 mod version;
 
 pub use manifest::{ContractBundle, ContractError, Manifest};

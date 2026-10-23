@@ -1,0 +1,34 @@
+midgard: "0.2"
+service: example.echo
+capability: submit
+version: 1.0.0
+description: Accept a synthetic payload and acknowledge its identifier.
+
+execution:
+  outcome: accepted        # accepted | completed
+  idempotency: supported   # required | supported | none
+
+authorization:
+  permission: example.echo:submit
+  callers: [service, user]
+  context:
+    application: required
+    tenant: required
+  delegation: supported
+
+interfaces:
+  - id: rest
+    protocol: http
+    specification:
+      type: openapi
+      document: ./openapi.yaml
+      operation: submitEcho
+
+  - id: queue
+    protocol: mq
+    authorization:
+      callers: [service]   # narrows, never widens, capability-level callers
+    specification:
+      type: asyncapi
+      document: ./asyncapi.yaml
+      operation: submitEcho

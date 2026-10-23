@@ -64,6 +64,10 @@ pub fn router(st: AppState) -> Router {
             "/v0/contracts",
             post(contracts::publish).layer(DefaultBodyLimit::max(2 * 1024 * 1024)),
         )
+        .route(
+            "/v0/capability-contracts",
+            post(contracts::publish_v02).layer(DefaultBodyLimit::max(4 * 1024 * 1024)),
+        )
         .route("/v0/implementations", post(imp::register).get(imp::list))
         .route("/v0/implementations/{id}", get(imp::get).patch(imp::patch))
         .route(
@@ -89,6 +93,10 @@ pub fn router(st: AppState) -> Router {
         .route(
             "/v0/contracts/{name}/versions/{version}",
             get(contracts::get_version),
+        )
+        .route(
+            "/v0/contracts/{name}/versions/{version}/interfaces/{interface}/document",
+            get(contracts::get_interface_document),
         )
         .route("/v0/contracts/resolve", post(resolve::resolve))
         .route("/v0/tenants/resolve", post(tenants::resolve))

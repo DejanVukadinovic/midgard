@@ -1,0 +1,82 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://midgard.dev/schema/midgard-contract-v0.2.schema.json",
+  "title": "MIDGARD capability contract manifest v0.2",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["midgard", "service", "capability", "version", "authorization", "interfaces"],
+  "properties": {
+    "midgard": { "const": "0.2" },
+    "service": { "type": "string", "pattern": "^[a-z][a-z0-9-]{0,31}(\\.[a-z][a-z0-9-]{0,31})*$", "maxLength": 64 },
+    "capability": { "type": "string", "pattern": "^[a-z][a-z0-9-]{0,31}$" },
+    "version": { "type": "string", "pattern": "^(0|[1-9][0-9]*)\\.(0|[1-9][0-9]*)\\.(0|[1-9][0-9]*)$" },
+    "description": { "type": "string" },
+    "execution": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["outcome"],
+      "properties": {
+        "outcome": { "enum": ["accepted", "completed"] },
+        "idempotency": { "enum": ["required", "supported", "none"] }
+      }
+    },
+    "authorization": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["permission", "callers"],
+      "properties": {
+        "permission": { "type": "string", "pattern": "^[A-Za-z0-9:._-]{1,64}$" },
+        "callers": { "$ref": "#/$defs/callers" },
+        "context": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "application": { "enum": ["required", "optional"] },
+            "tenant": { "enum": ["required", "optional"] }
+          }
+        },
+        "delegation": { "enum": ["supported", "none"] }
+      }
+    },
+    "interfaces": {
+      "type": "array",
+      "minItems": 1,
+      "maxItems": 16,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["id", "protocol", "specification"],
+        "properties": {
+          "id": { "type": "string", "pattern": "^[a-z][a-z0-9-]{0,31}$" },
+          "protocol": { "enum": ["http", "mq"], "description": "Transport family, never a vendor name." },
+          "authorization": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["callers"],
+            "properties": { "callers": { "$ref": "#/$defs/callers" } }
+          },
+          "specification": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["type", "operation"],
+            "oneOf": [{ "required": ["document"] }, { "required": ["inline"] }],
+            "properties": {
+              "type": { "enum": ["openapi", "asyncapi"] },
+              "document": { "type": "string", "not": { "pattern": "(://|^/|\\.\\.|\\\\)" } },
+              "inline": { "type": "object" },
+              "operation": { "type": "string", "minLength": 1 }
+            }
+          }
+        }
+      }
+    }
+  },
+  "$defs": {
+    "callers": {
+      "type": "array",
+      "minItems": 1,
+      "uniqueItems": true,
+      "items": { "enum": ["service", "user"] }
+    }
+  }
+}
