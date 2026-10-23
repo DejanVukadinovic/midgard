@@ -20,7 +20,7 @@ WRAP="$(mktemp)"; trap 'rm -f "$WRAP"' EXIT
 cat >"$WRAP" <<WRAPPER
 #!/usr/bin/env bash
 exec ${COMPOSE[*]} run --rm -T -e MIDGARD_CLIENT_ID -e MIDGARD_CLIENT_SECRET \\
-  -e MIDGARD_REGISTRY_URL=http://platform-core:8080 sample-application check "\$@" 2>>"${WRAP}.err"
+  -e MIDGARD_REGISTRY_URL=http://platform-core:8080 sample-application "\$@" 2>>"${WRAP}.err"
 WRAPPER
 chmod +x "$WRAP"
 
