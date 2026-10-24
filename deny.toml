@@ -7,7 +7,10 @@ version = 2
 yanked = "deny"
 # serde_yaml (deprecated) -> unsafe-libyaml is unmaintained; no safe upgrade exists. Input is size-limited (2 MiB)
 # and only accepted from authorized publishers. Tracked tech debt: migrate to a maintained YAML parser.
-ignore = ["RUSTSEC-2024-0449"]
+# RUSTSEC-2026-0387 (crypto-bigint 0.5.5 timing variability): reachable only through p256 in platform-testkit / dev-idp, i.e. the
+# offline development IdP and test fixtures that sign with throwaway keys. No production path uses it; p256 0.13 has no release on
+# crypto-bigint >= 0.7. Revisit when p256 0.14 is stable.
+ignore = ["RUSTSEC-2024-0449", "RUSTSEC-2026-0387"]
 
 [licenses]
 version = 2
