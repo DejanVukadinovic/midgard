@@ -22,7 +22,7 @@ repository = "https://github.com/dejanvukadinovic/midgard"
 [workspace.dependencies]
 anyhow = "1"
 axum = { version = "0.8", features = ["macros"] }
-base64 = "0.22"
+base64 = "0.23"
 chrono = { version = "0.4", features = ["serde"] }
 hex = "0.4"
 http = "1"
