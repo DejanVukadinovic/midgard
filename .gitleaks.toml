@@ -6,4 +6,4 @@ useDefault = true
 [allowlist]
 description = "dev-only fixtures"
 regexes = ['''dev-only-[a-z]+''', '''midgard_it_app_test''', '''cap_app_test''', '''postgres://midgard:midgard@localhost''']
-paths = ['''deployments/compose/dev-idp\.json''', '''^services/.*/tests/''']
+paths = ['''deployments/compose/dev-idp\.json''', '''^services/.*/tests/''', '''^scripts/zitadel-bootstrap\.sh$''']

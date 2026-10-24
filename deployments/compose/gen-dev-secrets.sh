@@ -30,5 +30,12 @@ cat >.secrets/zitadel.env <<ENV
 ZITADEL_DATABASE_POSTGRES_USER_PASSWORD=$(val pw_zitadel_db)
 ZITADEL_DATABASE_POSTGRES_ADMIN_PASSWORD=$(val pg_superuser_password)
 ENV
+# NATS: the config substitutes these into nats.conf, so passwords must start with a letter.
+for k in nats_admin_password nats_provider_password nats_client_password; do put "$k" "pw$(gen | head -c 32)"; done
+cat >.secrets/nats.env <<ENV
+NATS_ADMIN_PASSWORD=$(val nats_admin_password)
+NATS_PROVIDER_PASSWORD=$(val nats_provider_password)
+NATS_CLIENT_PASSWORD=$(val nats_client_password)
+ENV
 chmod 644 .secrets/* 2>/dev/null || true
 echo "secrets ready in deployments/compose/.secrets (ignored by git; local development only)"

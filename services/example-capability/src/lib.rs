@@ -93,12 +93,13 @@ impl CoreCredentials {
         {
             return Ok(t.clone());
         }
+        let (aud_key, aud_val) = audience_param(&self.audience);
         let resp = http
             .post(&self.token_url)
             .basic_auth(&self.client_id, Some(&self.client_secret))
             .form(&[
                 ("grant_type", "client_credentials"),
-                ("audience", self.audience.as_str()),
+                (aud_key, aud_val.as_str()),
             ])
             .send()
             .await
@@ -118,6 +119,19 @@ impl CoreCredentials {
             .max(5);
         *c = Some((tok.clone(), Instant::now() + Duration::from_secs(ttl)));
         Ok(tok)
+    }
+}
+
+/// Token-request parameter for an audience: a ZITADEL project id (all digits) is requested through
+/// its audience scope; any other value uses the generic `audience` parameter.
+fn audience_param(a: &str) -> (&'static str, String) {
+    if !a.is_empty() && a.chars().all(|c| c.is_ascii_digit()) {
+        (
+            "scope",
+            format!("openid urn:zitadel:iam:org:project:id:{a}:aud"),
+        )
+    } else {
+        ("audience", a.to_string())
     }
 }
 

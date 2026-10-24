@@ -40,6 +40,14 @@ func secret(name string) string {
 
 func build() *app.App {
 	registry := env("MIDGARD_REGISTRY_URL", "http://localhost:8080")
+	// MIDGARD_AUDIENCES="contract=idp-audience,..." maps contract names to the identity provider's
+	// audience (ZITADEL project ids). Unmapped contracts use the contract name.
+	audiences := map[string]string{}
+	for _, kv := range strings.Split(os.Getenv("MIDGARD_AUDIENCES"), ",") {
+		if k, v, ok := strings.Cut(strings.TrimSpace(kv), "="); ok {
+			audiences[k] = v
+		}
+	}
 	c, err := midgard.New(midgard.Config{
 		RegistryURL:      registry,
 		RegistryAudience: env("MIDGARD_REGISTRY_AUDIENCE", "midgard-core"),
@@ -48,6 +56,7 @@ func build() *app.App {
 			TokenURL:     os.Getenv("MIDGARD_TOKEN_URL"),
 			ClientID:     os.Getenv("MIDGARD_CLIENT_ID"),
 			ClientSecret: secret("MIDGARD_CLIENT_SECRET"),
+			Audiences:    audiences,
 		},
 	})
 	if err != nil {

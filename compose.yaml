@@ -1,0 +1,150 @@
+# MIDGARD v0.2 — single-entry-point Compose deployment.
+#
+#   cp .env.example .env
+#   deployments/compose/gen-dev-secrets.sh          # local-only credentials (git-ignored); see docs/compose-quickstart.md
+#   docker compose up -d --build
+#   docker compose --profile test run --rm integration-tests
+#
+# The v0 stack (postgres, db-init, core, example capability, edge, dev IdP) is included unchanged;
+# this file adds the v0.2 pieces: NATS JetStream, the synthetic provider/client and the bootstrap
+# and test runners. `docker compose down` keeps volumes; `down -v` DELETES all state.
+name: midgard
+
+include:
+  - path:
+      - deployments/compose/compose.yaml
+      - deployments/compose/compose.dev.yaml
+    env_file: .env
+    project_directory: deployments/compose
+
+x-hardening: &hardening
+  restart: unless-stopped
+  read_only: true
+  cap_drop: [ALL]
+  security_opt: ["no-new-privileges:true"]
+  networks: [platform]
+  logging: {driver: json-file, options: {max-size: "10m", max-file: "3"}}
+
+services:
+  nats:
+    <<: *hardening
+    image: ${NATS_IMAGE:?set in .env}
+    command: ["-c", "/etc/nats/nats.conf"]
+    env_file: [deployments/compose/.secrets/nats.env]
+    environment:
+      NATS_STORE_DIR: /data/jetstream
+    volumes:
+      - ./deployments/compose/nats/nats.conf:/etc/nats/nats.conf:ro
+      - natsdata:/data
+    healthcheck:
+      test: ["CMD", "wget", "-q", "-O", "/dev/null", "http://localhost:8222/healthz"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+    mem_limit: 256m
+
+  # Idempotent JetStream stream/consumer provisioning with the broker's admin identity.
+  nats-init:
+    <<: *hardening
+    restart: "no"
+    image: midgard/echo:dev
+    build: {context: ., dockerfile: deployments/docker/Dockerfile.fixtures, target: echo}
+    command: ["nats-init"]
+    depends_on: {nats: {condition: service_healthy}}
+    environment:
+      ECHO_NATS_URL: nats://nats:4222
+      ECHO_NATS_ADMIN_PASSWORD_FILE: /run/secrets/nats_admin_password
+    secrets: [nats_admin_password]
+
+  # Synthetic provider of example.echo.submit (HTTP + queue). Uses no MIDGARD library.
+  example-provider:
+    <<: *hardening
+    image: midgard/echo:dev
+    command: ["provider"]
+    depends_on:
+      platform-core: {condition: service_healthy}
+      nats-init: {condition: service_completed_successfully}
+      zitadel-bootstrap: {condition: service_completed_successfully, required: false}
+    volumes: [idp:/idp:ro]     # ZITADEL mode: the fixture reads ids/secrets/audiences published by zitadel-bootstrap
+    environment:
+      ECHO_ISSUER: ${IDP_ISSUER}
+      ECHO_TOKEN_URL: ${IDP_TOKEN_URL}
+      ECHO_CORE_URL: http://platform-core:8080
+      ECHO_CLIENT_ID: echo-provider
+      ECHO_CLIENT_SECRET: dev-only-echo-provider      # dev-idp fixture only; replaced by the idp volume's secret with ZITADEL
+      ECHO_PUBLIC_ENDPOINT: http://example-provider:8080   # Compose DNS name, valid only inside the network
+      ECHO_NATS_URL: nats://nats:4222
+      ECHO_NATS_USER: provider
+      ECHO_NATS_PASSWORD_FILE: /run/secrets/nats_provider_password
+      ECHO_DEBUG: "true"                                   # exposes /debug/processed to the test runner (dev only)
+    secrets: [nats_provider_password]
+    healthcheck:
+      test: ["CMD", "/echo", "healthcheck", "http://localhost:8080/health/ready"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+    mem_limit: 64m
+
+  # Idempotent provisioning of contracts, identities, applications, grants and bindings (v0 + v0.2).
+  bootstrap:
+    <<: *hardening
+    restart: "no"
+    image: midgard/tools:dev
+    build: {context: ., dockerfile: deployments/docker/Dockerfile.fixtures, target: tools}
+    command: ["bash", "-c", "scripts/bootstrap.sh && scripts/bootstrap-v02.sh"]
+    tmpfs: [/tmp]
+    depends_on:
+      platform-core: {condition: service_healthy}
+      example-capability: {condition: service_healthy}
+      example-provider: {condition: service_healthy}
+      dev-idp: {condition: service_healthy, required: false}
+      zitadel-bootstrap: {condition: service_completed_successfully, required: false}
+    volumes: [idp:/idp:ro]
+    environment: &tools-env
+      PLATFORM_URL: http://platform-core:8080
+      IDP_URL: http://dev-idp:9000          # dev-idp mode only
+      IDP_DIR: /idp                         # ZITADEL mode: ids, audiences and secrets published by zitadel-bootstrap
+      ZITADEL_URL: http://zitadel:8080
+      OUT_DIR: /idp
+
+  # Synthetic client application: resolves example.echo.submit and invokes both interfaces once.
+  example-client:
+    <<: *hardening
+    profiles: [demo]
+    restart: "no"
+    image: midgard/echo:dev
+    command: ["client", "submit-http", "--id", "demo-1"]
+    depends_on: {bootstrap: {condition: service_completed_successfully}}
+    volumes: [idp:/idp:ro]
+    environment:
+      ECHO_ISSUER: ${IDP_ISSUER}
+      ECHO_TOKEN_URL: ${IDP_TOKEN_URL}
+      ECHO_CORE_URL: http://platform-core:8080
+      ECHO_CLIENT_ID: obroklik-backend
+      ECHO_CLIENT_SECRET: dev-only-obroklik
+      ECHO_APP: obroklik
+
+  integration-tests:
+    <<: *hardening
+    profiles: [test]
+    restart: "no"
+    image: midgard/tools:dev
+    command: ["bash", "-c", "NATS_CLIENT_PASSWORD=$$(cat /run/secrets/nats_client_password) exec tests/integration/v02.sh"]
+    depends_on:
+      bootstrap: {condition: service_completed_successfully}
+    volumes: [idp:/idp:ro]
+    environment:
+      <<: *tools-env
+      PROVIDER_URL: http://example-provider:8080
+      ECHO_NATS_URL: nats://nats:4222
+      ECHO_ISSUER: ${IDP_ISSUER}
+    tmpfs: [/tmp]
+    secrets: [nats_client_password]
+
+volumes:
+  natsdata:
+
+secrets:
+  nats_admin_password: {file: deployments/compose/.secrets/nats_admin_password}
+  nats_provider_password: {file: deployments/compose/.secrets/nats_provider_password}
+  nats_client_password: {file: deployments/compose/.secrets/nats_client_password}

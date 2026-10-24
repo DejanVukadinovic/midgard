@@ -21,10 +21,37 @@ use crate::{
 };
 
 #[derive(Deserialize)]
+pub struct InterfaceSpec {
+    pub id: String,
+    /// http: base URL; method/path come from the OpenAPI operation.
+    #[serde(default)]
+    pub location: Option<String>,
+    /// mq: logical destination (deployment metadata, not contract identity).
+    #[serde(default)]
+    pub destination: Option<String>,
+    #[serde(default)]
+    pub broker_binding: Option<String>,
+}
+
+#[derive(Deserialize)]
 pub struct ImplementsSpec {
     pub contract: String,
     pub version: String,
     pub digest: String,
+    /// Required for v0.2 contracts (a partial set is valid); must be omitted for v0 contracts.
+    #[serde(default)]
+    pub interfaces: Vec<InterfaceSpec>,
+}
+
+fn valid_destination(d: &str) -> bool {
+    !d.is_empty()
+        && d.len() <= 128
+        && d.chars()
+            .all(|c| c.is_ascii_alphanumeric() || "._-".contains(c))
+}
+
+fn valid_binding(b: &str) -> bool {
+    valid_impl_slug(b)
 }
 
 #[derive(Deserialize)]
@@ -57,6 +84,102 @@ fn valid_impl_slug(s: &str) -> bool {
             .all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || c == '-')
 }
 
+struct ValidatedInterface {
+    id: String,
+    location: Option<String>,
+    destination: Option<String>,
+    broker_binding: Option<String>,
+}
+
+/// Check advertised interfaces against the published contract: ids must exist, HTTP interfaces
+/// need a policy-compliant base URL, MQ interfaces a destination and broker binding.
+async fn validate_interfaces(
+    st: &AppState,
+    conn: &mut PgConnection,
+    contract_id: Uuid,
+    c: &ImplementsSpec,
+) -> ApiResult<Vec<ValidatedInterface>> {
+    let declared: Vec<(String, String)> =
+        sqlx::query("SELECT interface_id, protocol FROM contract_interfaces WHERE contract_id=$1")
+            .bind(contract_id)
+            .fetch_all(&mut *conn)
+            .await
+            .map_err(db)?
+            .into_iter()
+            .map(|r| (r.get("interface_id"), r.get("protocol")))
+            .collect();
+    let bad = |msg: String| Problem::unprocessable("invalid_interface", msg);
+    if declared.is_empty() {
+        if !c.interfaces.is_empty() {
+            return Err(bad(format!(
+                "{}@{} is a v0 contract and has no interfaces",
+                c.contract, c.version
+            )));
+        }
+        return Ok(vec![]);
+    }
+    if c.interfaces.is_empty() || c.interfaces.len() > 16 {
+        return Err(bad(format!(
+            "{}@{} requires 1-16 advertised interfaces",
+            c.contract, c.version
+        )));
+    }
+    let mut seen = std::collections::BTreeSet::new();
+    let mut out = Vec::new();
+    for i in &c.interfaces {
+        if !seen.insert(i.id.as_str()) {
+            return Err(bad(format!("interface `{}` advertised twice", i.id)));
+        }
+        let Some((_, protocol)) = declared.iter().find(|(d, _)| *d == i.id) else {
+            return Err(bad(format!(
+                "interface `{}` is not declared by {}@{}",
+                i.id, c.contract, c.version
+            )));
+        };
+        let v = match protocol.as_str() {
+            "http" => {
+                let loc = i
+                    .location
+                    .as_deref()
+                    .filter(|_| i.destination.is_none() && i.broker_binding.is_none());
+                let Some(loc) = loc else {
+                    return Err(bad(format!(
+                        "http interface `{}` requires only `location`",
+                        i.id
+                    )));
+                };
+                let url = validate_endpoint(loc, &st.cfg.endpoint_allowed_hosts)
+                    .map_err(|e| Problem::unprocessable("endpoint_rejected", e))?;
+                ValidatedInterface {
+                    id: i.id.clone(),
+                    location: Some(url.as_str().trim_end_matches('/').to_string()),
+                    destination: None,
+                    broker_binding: None,
+                }
+            }
+            _ => {
+                let ok = i.location.is_none()
+                    && i.destination.as_deref().is_some_and(valid_destination)
+                    && i.broker_binding.as_deref().is_some_and(valid_binding);
+                if !ok {
+                    return Err(bad(format!(
+                        "mq interface `{}` requires a plain `destination` (letters, digits, `._-`) and a `broker_binding`",
+                        i.id
+                    )));
+                }
+                ValidatedInterface {
+                    id: i.id.clone(),
+                    location: None,
+                    destination: i.destination.clone(),
+                    broker_binding: i.broker_binding.clone(),
+                }
+            }
+        };
+        out.push(v);
+    }
+    Ok(out)
+}
+
 async fn implementation_view(st: &AppState, id: Uuid) -> ApiResult<Value> {
     let i = sqlx::query(
         "SELECT id, slug, release_version, status, owner_identity FROM implementations WHERE id=$1",
@@ -66,14 +189,28 @@ async fn implementation_view(st: &AppState, id: Uuid) -> ApiResult<Value> {
     .await
     .map_err(db)?
     .ok_or_else(|| Problem::not_found("implementation not found"))?;
-    let impls: Vec<Value> = sqlx::query("SELECT c.name, c.version, ic.contract_digest FROM implementation_contracts ic JOIN contracts c ON c.id=ic.contract_id WHERE ic.implementation_id=$1 ORDER BY c.name, c.major, c.minor, c.patch")
+    let mut impls: Vec<Value> = Vec::new();
+    for r in sqlx::query("SELECT c.id, c.name, c.version, ic.contract_digest FROM implementation_contracts ic JOIN contracts c ON c.id=ic.contract_id WHERE ic.implementation_id=$1 ORDER BY c.name, c.major, c.minor, c.patch")
         .bind(id)
         .fetch_all(&st.pool)
         .await
         .map_err(db)?
-        .into_iter()
-        .map(|r| json!({"contract": r.get::<String,_>("name"), "version": r.get::<String,_>("version"), "digest": r.get::<String,_>("contract_digest")}))
-        .collect();
+    {
+        let ifaces: Vec<Value> = sqlx::query("SELECT interface_id, location, destination, broker_binding FROM implementation_interfaces WHERE implementation_id=$1 AND contract_id=$2 ORDER BY interface_id")
+            .bind(id)
+            .bind(r.get::<Uuid, _>("id"))
+            .fetch_all(&st.pool)
+            .await
+            .map_err(db)?
+            .into_iter()
+            .map(|i| json!({"id": i.get::<String,_>("interface_id"), "location": i.get::<Option<String>,_>("location"), "destination": i.get::<Option<String>,_>("destination"), "broker_binding": i.get::<Option<String>,_>("broker_binding")}))
+            .collect();
+        let mut v = json!({"contract": r.get::<String,_>("name"), "version": r.get::<String,_>("version"), "digest": r.get::<String,_>("contract_digest")});
+        if !ifaces.is_empty() {
+            v["interfaces"] = Value::Array(ifaces);
+        }
+        impls.push(v);
+    }
     let deps: Vec<Value> = sqlx::query("SELECT id, environment, logical_endpoint, status, last_health_at FROM deployments WHERE implementation_id=$1 ORDER BY environment")
         .bind(id)
         .fetch_all(&st.pool)
@@ -152,6 +289,7 @@ pub async fn register(
     let mut tx = st.pool.begin().await.map_err(db)?;
     // Resolve and verify every claimed contract digest against the published version.
     let mut contract_ids = Vec::new();
+    let mut iface_rows: Vec<(Uuid, Vec<ValidatedInterface>)> = Vec::new();
     for c in &req.implements {
         let r = sqlx::query("SELECT id, digest FROM contracts WHERE name=$1 AND version=$2")
             .bind(&c.contract)
@@ -174,7 +312,10 @@ pub async fn register(
                 ),
             ));
         }
-        contract_ids.push((r.get::<Uuid, _>("id"), c.digest.clone()));
+        let cid: Uuid = r.get("id");
+        let validated = validate_interfaces(&st, &mut tx, cid, c).await?;
+        contract_ids.push((cid, c.digest.clone()));
+        iface_rows.push((cid, validated));
     }
 
     let existing =
@@ -233,6 +374,26 @@ pub async fn register(
             .execute(&mut *tx)
             .await
             .map_err(db)?;
+    }
+    // Replace the advertised interface set for the contracts this implementation provides.
+    sqlx::query("DELETE FROM implementation_interfaces WHERE implementation_id=$1")
+        .bind(impl_id)
+        .execute(&mut *tx)
+        .await
+        .map_err(db)?;
+    for (cid, rows) in &iface_rows {
+        for i in rows {
+            sqlx::query("INSERT INTO implementation_interfaces (implementation_id, contract_id, interface_id, location, destination, broker_binding) VALUES ($1,$2,$3,$4,$5,$6)")
+                .bind(impl_id)
+                .bind(cid)
+                .bind(&i.id)
+                .bind(&i.location)
+                .bind(&i.destination)
+                .bind(&i.broker_binding)
+                .execute(&mut *tx)
+                .await
+                .map_err(db)?;
+        }
     }
     let mut dep_ids = Vec::new();
     for d in &req.deployments {

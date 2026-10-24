@@ -5,6 +5,7 @@ members = [
   "crates/platform-auth",
   "crates/platform-persistence",
   "crates/platform-contracts",
+  "crates/platform-messaging",
   "crates/platform-testkit",
   "services/platform-core",
   "services/example-capability",
@@ -47,6 +48,7 @@ platform-auth = { path = "crates/platform-auth", version = "0.1.0" }
 platform-persistence = { path = "crates/platform-persistence", version = "0.1.0" }
 platform-contracts = { path = "crates/platform-contracts", version = "0.1.0" }
 platform-testkit = { path = "crates/platform-testkit", version = "0.1.0" }
+platform-messaging = { path = "crates/platform-messaging", version = "0.1.0" }
 
 [profile.release]
 lto = "thin"

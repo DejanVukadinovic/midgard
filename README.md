@@ -10,7 +10,7 @@ decide which implementation an application resolves, and every `(organization, a
 to an isolated internal **tenant**. It is open source (Apache-2.0), driven by the real needs of the
 products it accelerates, and is **not** a hosted platform or marketplace.
 
-> **Status: pre-1.0 (v0.1).** APIs under `/v0` may change; published *contract versions* are immutable.
+> **Status: pre-1.0 (v0.2 in progress).** APIs under `/v0` may change; published *contract versions* are immutable.
 > The table below separates what is implemented and tested from what is not yet verified.
 
 ## Current status
@@ -27,8 +27,12 @@ products it accelerates, and is **not** a hosted platform or marketplace.
 | Go SDK (resolver cache, bounded stale-if-error, no replay of non-idempotent calls) + generated contract client | Implemented, tested |
 | Sample contract `platform.example`, sample Rust service, sample Go application | Implemented, end-to-end tested |
 | Docker Compose stack, idempotent bootstrap, acceptance suite | Implemented; Compose path runs in CI (see [acceptance matrix](docs/contributing/acceptance-matrix.md)) |
-| **ZITADEL integration** (project/client provisioning, real claim shapes, delegation, revocation) | **Written against documented APIs, NOT yet verified against a live release** — see [ZITADEL status](docs/operations/zitadel.md) |
-| Kubernetes, NATS/outbox, business capabilities | Not implemented (non-goals for v0.x) |
+| **ZITADEL v2.71.8** (bootstrap, real claim shapes, audiences, headless user tokens, v0 + v0.2 end-to-end) | Verified against the real release binary (`make acceptance-zitadel`). Core's management-API provisioner, delegation/token exchange, revocation latency and the ZITADEL *container* are **not yet verified** — see [ZITADEL status](docs/operations/zitadel.md) |
+| **v0.2** multi-protocol capability contracts (OpenAPI 3.1 + AsyncAPI 3.0), interface registration, interface-aware resolution and provider-side `/v0/authorize` | Implemented, tested — see [contracts v0.2](docs/contracts-v0.2.md) |
+| **v0.2** broker-neutral messaging crate, in-memory + NATS JetStream adapters (conformance, restart persistence, broker ACLs) | Implemented, tested against a real `nats-server` — see [messaging](docs/messaging.md) |
+| **v0.2** language-independent Go provider/client fixture and end-to-end script | Implemented; run natively (`make acceptance-interfaces`) |
+| **v0.2** root `compose.yaml` (ZITADEL, NATS, provider, bootstrap, `integration-tests`) | Written, `docker compose config` validated; **containers not yet run** — see [quickstart](docs/compose-quickstart.md) |
+| Kubernetes, outbox/event router, business capabilities | Not implemented (non-goals for v0.x) |
 
 ## Architecture
 
@@ -100,6 +104,8 @@ The Go sample application then resolves `platform.example` without knowing any s
 | `contracts/` | Public contract packages and the registry API description |
 | `sdk/go` | Go SDK + generated contract client |
 | `examples/sample-application` | Sample Go application facade |
+| `examples/echo` | v0.2 synthetic provider/client (Go, no MIDGARD library) |
+| `crates/platform-messaging` | v0.2 broker-neutral messaging traits, in-memory and NATS JetStream adapters |
 | `deployments/` | Compose stack, Dockerfiles, edge config |
 | `migrations/` | SQL migrations (run as a separate one-shot job) |
 | `tests/acceptance` | End-to-end scenarios; [acceptance matrix](docs/contributing/acceptance-matrix.md) |
@@ -107,7 +113,8 @@ The Go sample application then resolves `platform.example` without knowing any s
 
 ## More
 
-[Getting started](docs/getting-started.md) · [ADRs](docs/adr/) · [Threat model](docs/security/threat-model.md) ·
+[Getting started](docs/getting-started.md) · [v0.2 compose quickstart](docs/compose-quickstart.md) ·
+[v0.2 acceptance status](docs/contributing/acceptance-matrix-v0.2.md) · [ADRs](docs/adr/) · [Threat model](docs/security/threat-model.md) ·
 [Operations](docs/operations/) · [Acceptance matrix](docs/contributing/acceptance-matrix.md) ·
 [Contributing](CONTRIBUTING.md) · [Security policy](SECURITY.md) · [License](LICENSE) (Apache-2.0) ·
 [Changelog](CHANGELOG.md)

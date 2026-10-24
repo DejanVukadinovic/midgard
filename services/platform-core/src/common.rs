@@ -47,6 +47,22 @@ pub async fn app_for_client(
     }))
 }
 
+pub async fn app_for_slug(pool: &PgPool, slug: &str) -> Result<Option<WorkloadApp>, Problem> {
+    let row = sqlx::query(
+        "SELECT id, slug, zitadel_project_id, status FROM applications WHERE slug = $1",
+    )
+    .bind(slug)
+    .fetch_optional(pool)
+    .await
+    .map_err(db)?;
+    Ok(row.map(|r| WorkloadApp {
+        id: r.get("id"),
+        slug: r.get("slug"),
+        project_id: r.get("zitadel_project_id"),
+        status: r.get("status"),
+    }))
+}
+
 pub fn require_active(app: &WorkloadApp) -> Result<(), Problem> {
     if app.status == "active" {
         Ok(())

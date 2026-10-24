@@ -1,27 +1,31 @@
 # MIDGARD developer entry points. `make help` lists targets.
 SHELL := /bin/bash
-COMPOSE := docker compose --env-file .env -f deployments/compose/compose.yaml -f deployments/compose/compose.dev.yaml --profile dev-idp --profile demo
+# The v0 `make dev-up` path uses the offline dev IdP regardless of the (ZITADEL) defaults in .env.
+# Scoped to the compose command only: host-side tools must keep using localhost URLs.
+COMPOSE := env IDP_ISSUER=http://dev-idp:9000 IDP_TOKEN_URL=http://dev-idp:9000/oauth/v2/token PLATFORM_ACCEPT_JWT_TYP=false docker compose --env-file .env -f deployments/compose/compose.yaml -f deployments/compose/compose.dev.yaml --profile dev-idp --profile demo
 OAPI_CODEGEN := go run github.com/oapi-codegen/oapi-codegen/v2/cmd/oapi-codegen@v2.4.1
 export TEST_DATABASE_ADMIN_URL ?= postgres://midgard:midgard@localhost:5432/postgres
 
 .PHONY: help fmt fmt-check lint test test-rust test-go contracts-check sdk-generate sdk-check \
-        dev-up dev-down bootstrap acceptance acceptance-compose local-up local-down audit secrets-scan
+        dev-up dev-down bootstrap acceptance acceptance-compose local-up local-down audit secrets-scan \
+        up down test-compose acceptance-interfaces acceptance-zitadel test-messaging
 
 help: ## list targets
 	@grep -hE '^[a-zA-Z_-]+:.*## ' $(MAKEFILE_LIST) | awk -F':.*## ' '{printf "  %-20s %s\n", $$1, $$2}'
 
 fmt: ## format Rust and Go
 	cargo fmt --all
-	gofmt -w sdk/go examples/sample-application
+	gofmt -w sdk/go examples/sample-application examples/echo
 
 fmt-check: ## verify formatting
 	cargo fmt --all -- --check
-	test -z "$$(gofmt -l sdk/go examples/sample-application)"
+	test -z "$$(gofmt -l sdk/go examples/sample-application examples/echo)"
 
 lint: ## clippy (deny warnings) + go vet
 	cargo clippy --workspace --all-targets --locked -- -D warnings
 	cd sdk/go && go vet ./...
 	cd examples/sample-application && go vet ./...
+	cd examples/echo && go vet ./...
 
 test-rust: ## Rust tests (needs PostgreSQL: set TEST_DATABASE_ADMIN_URL, superuser)
 	cargo test --workspace --locked
@@ -29,6 +33,7 @@ test-rust: ## Rust tests (needs PostgreSQL: set TEST_DATABASE_ADMIN_URL, superus
 test-go: ## Go SDK + sample app tests
 	cd sdk/go && go test ./...
 	cd examples/sample-application && go test ./...
+	cd examples/echo && go test ./...
 
 test: test-rust test-go ## all unit/integration tests
 
@@ -36,6 +41,7 @@ contracts-check: ## schema compatibility of published contract versions + digest
 	cargo run -q -p platform-contracts --bin contract-tool -- check contracts/platform/example/v1/1.0.0/openapi.yaml contracts/platform/example/v1/1.1.0/openapi.yaml
 	cargo run -q -p platform-contracts --bin contract-tool -- digest contracts/platform/example/v1/1.0.0 >/dev/null
 	cargo run -q -p platform-contracts --bin contract-tool -- digest contracts/platform/example/v1/1.1.0 >/dev/null
+	cargo run -q -p platform-contracts --bin contract-tool -- validate-v02 contracts/examples/echo >/dev/null
 
 sdk-generate: ## regenerate the Go contract client from the contract package
 	cd sdk/go/contracts/platformexample && $(OAPI_CODEGEN) -config oapi-codegen.yaml ../../../../contracts/platform/example/v1/1.1.0/openapi.yaml
@@ -62,6 +68,18 @@ bootstrap: ## register contracts, apps, tenants, grant + binding (idempotent)
 acceptance-compose: ## end-to-end acceptance on a clean Compose stack
 	FRESH=1 tests/acceptance/compose.sh
 
+# ---- v0.2: single root Compose entry point (see docs/compose-quickstart.md) -----------------
+up: ## v0.2 stack: secrets + `docker compose up -d --build` (root compose.yaml)
+	@test -f .env || cp .env.example .env
+	deployments/compose/gen-dev-secrets.sh
+	docker compose up -d --build --wait
+
+test-compose: ## v0.2 end-to-end tests inside the Compose network (needs `make up`)
+	docker compose --profile test run --rm integration-tests
+
+down: ## stop the v0.2 stack, KEEPING volumes (`docker compose down -v` deletes all state)
+	docker compose down
+
 # ---- Docker-free quickstart (processes on localhost; needs a local PostgreSQL superuser) ----
 local-up: ## start dev IdP, core and example service as local processes
 	scripts/dev-local.sh up
@@ -73,10 +91,24 @@ acceptance: ## end-to-end acceptance against the local-process stack
 	scripts/dev-local.sh up
 	eval "$$(scripts/dev-local.sh env)" && tests/acceptance/acceptance.sh && tests/acceptance/backup-restore.sh
 
+acceptance-interfaces: ## v0.2 end-to-end (processes on localhost; needs nats-server on PATH or NATS_SERVER_BIN)
+	WITH_V02=1 scripts/dev-local.sh up
+	eval "$$(scripts/dev-local.sh env)" && OPERATOR_CLIENT_SECRET=dev-only-operator PUBLISHER_CLIENT_SECRET=dev-only-publisher scripts/bootstrap.sh \
+	  && OPERATOR_CLIENT_SECRET=dev-only-operator PUBLISHER_CLIENT_SECRET=dev-only-publisher tests/integration/v02.sh
+
+acceptance-zitadel: ## v0 + v0.2 end-to-end against a REAL ZITADEL (processes on localhost; needs ZITADEL_BIN and NATS_SERVER_BIN)
+	export IDP=zitadel WITH_V02=1; scripts/dev-local.sh up \
+	  && eval "$$(scripts/dev-local.sh env)" && scripts/bootstrap.sh \
+	  && tests/acceptance/acceptance.sh && tests/integration/v02.sh
+
+test-messaging: ## messaging conformance incl. real NATS JetStream (needs nats-server; set NATS_SERVER_BIN)
+	MIDGARD_REQUIRE_NATS=1 cargo test -p platform-messaging --locked
+
 audit: ## dependency vulnerability + license checks (needs cargo-deny, govulncheck)
 	cargo deny check
 	cd sdk/go && govulncheck ./...
 	cd examples/sample-application && govulncheck ./...
+	cd examples/echo && govulncheck ./...
 
 secrets-scan: ## scan the working tree and full history (needs gitleaks)
 	gitleaks detect --redact --config .gitleaks.toml

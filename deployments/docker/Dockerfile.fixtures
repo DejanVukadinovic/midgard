@@ -1,0 +1,39 @@
+# syntax=docker/dockerfile:1
+# Build context: repository root. Synthetic v0.2 fixtures. Targets:
+#   echo   the language-independent provider/client binary (no MIDGARD library inside)
+#   tools  bootstrap + integration-test runner (curl, jq, contract-tool, echo, scripts, tests)
+FROM golang:1.26-bookworm AS go-build
+WORKDIR /src
+COPY examples/echo ./examples/echo
+WORKDIR /src/examples/echo
+RUN CGO_ENABLED=0 go build -trimpath -o /out/echo .
+
+FROM rust:1.97-bookworm AS rust-build
+WORKDIR /src
+COPY Cargo.toml Cargo.lock rust-toolchain.toml ./
+COPY crates ./crates
+COPY services ./services
+COPY tools ./tools
+COPY migrations ./migrations
+COPY contracts ./contracts
+RUN --mount=type=cache,target=/usr/local/cargo/registry --mount=type=cache,target=/src/target \
+    cargo build --release --locked -p platform-contracts --bin contract-tool \
+ && mkdir /out && cp target/release/contract-tool /out/
+
+FROM gcr.io/distroless/static-debian12:nonroot AS echo
+COPY --from=go-build /out/echo /echo
+USER 65532:65532
+ENTRYPOINT ["/echo"]
+
+FROM debian:bookworm-slim AS tools
+RUN apt-get update && apt-get install -y --no-install-recommends bash ca-certificates curl jq \
+ && rm -rf /var/lib/apt/lists/* \
+ && useradd --system --uid 10001 --no-create-home midgard
+COPY --from=go-build /out/echo /usr/local/bin/echo
+COPY --from=rust-build /out/contract-tool /usr/local/bin/contract-tool
+WORKDIR /repo
+COPY scripts ./scripts
+COPY tests ./tests
+COPY contracts ./contracts
+ENV REPO_ROOT=/repo CONTRACT_TOOL=/usr/local/bin/contract-tool ECHO_BIN=/usr/local/bin/echo
+USER 10001
