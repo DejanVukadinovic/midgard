@@ -167,6 +167,8 @@ jobs:
           docker compose run --rm bootstrap
           docker compose restart platform-core nats example-provider
           docker compose --profile test run --rm integration-tests
+      - if: failure()
+        run: docker compose --profile test logs --no-color --tail=120 zitadel zitadel-bootstrap bootstrap platform-core example-provider nats || true
       - if: always()
         run: docker compose --profile test logs --no-color > compose-v02.log || true
       - if: always()

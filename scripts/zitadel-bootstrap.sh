@@ -154,8 +154,10 @@ GINA_ID=$GINA_ID
 ENV
 mv "$OUT_DIR/idp.env.tmp" "$OUT_DIR/idp.env"
 
+OPERATOR_NAME=midgard-operator
 log "7/7 verifying: operator token carries the core audience"
-tok="$(curl -fsS -u "midgard-operator:$(secret_get SECRET_MIDGARD_OPERATOR)" "${HOSTH[@]}" -d grant_type=client_credentials \
+op_secret="$(secret_get SECRET_MIDGARD_OPERATOR)"
+tok="$(curl -fsS -u "$OPERATOR_NAME:$op_secret" "${HOSTH[@]}" -d grant_type=client_credentials \
   --data-urlencode "scope=openid urn:zitadel:iam:org:project:id:$CORE_PID:aud" "$ZITADEL_URL/oauth/v2/token" | jq -er .access_token)"
 jq -e --arg a "$CORE_PID" --arg s "$OPERATOR_ID" '.aud|index($a)!=null' <<<"$(cut -d. -f2 <<<"$tok" | tr '_-' '/+' | base64 -d 2>/dev/null)" >/dev/null || die "operator token lacks the core audience"
 # In Compose the output volume is read by the (non-root) services; dev only, the volume is internal.

@@ -1,10 +1,8 @@
 # MIDGARD developer entry points. `make help` lists targets.
 SHELL := /bin/bash
 # The v0 `make dev-up` path uses the offline dev IdP regardless of the (ZITADEL) defaults in .env.
-export IDP_ISSUER := http://dev-idp:9000
-export IDP_TOKEN_URL := http://dev-idp:9000/oauth/v2/token
-export PLATFORM_ACCEPT_JWT_TYP := false
-COMPOSE := docker compose --env-file .env -f deployments/compose/compose.yaml -f deployments/compose/compose.dev.yaml --profile dev-idp --profile demo
+# Scoped to the compose command only: host-side tools must keep using localhost URLs.
+COMPOSE := env IDP_ISSUER=http://dev-idp:9000 IDP_TOKEN_URL=http://dev-idp:9000/oauth/v2/token PLATFORM_ACCEPT_JWT_TYP=false docker compose --env-file .env -f deployments/compose/compose.yaml -f deployments/compose/compose.dev.yaml --profile dev-idp --profile demo
 OAPI_CODEGEN := go run github.com/oapi-codegen/oapi-codegen/v2/cmd/oapi-codegen@v2.4.1
 export TEST_DATABASE_ADMIN_URL ?= postgres://midgard:midgard@localhost:5432/postgres
 

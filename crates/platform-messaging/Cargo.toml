@@ -8,7 +8,7 @@ license.workspace = true
 async-trait = "0.1"
 thiserror.workspace = true
 tokio.workspace = true
-async-nats = { version = "0.40", optional = true }
+async-nats = { version = "0.50", optional = true }
 futures-util = { version = "0.3", optional = true }
 bytes = { version = "1", optional = true }
 

@@ -180,6 +180,7 @@ services:
       ZITADEL_EXTERNALDOMAIN: zitadel
       ZITADEL_EXTERNALPORT: "8080"
       ZITADEL_PORT: "8080"
+      ZITADEL_TLS_ENABLED: "false"   # also read by `zitadel ready` (healthcheck), which otherwise probes https://
       ZITADEL_FIRSTINSTANCE_ORG_MACHINE_MACHINE_USERNAME: midgard-admin
       ZITADEL_FIRSTINSTANCE_ORG_MACHINE_MACHINE_NAME: midgard-admin
       ZITADEL_FIRSTINSTANCE_ORG_MACHINE_PAT_EXPIRATIONDATE: "2099-01-01T00:00:00Z"
