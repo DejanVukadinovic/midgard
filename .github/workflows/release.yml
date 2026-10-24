@@ -20,5 +20,5 @@ jobs:
       - run: |
           mkdir dist && cp target/release/{platform-core,example-capability,contract-tool} dist/
           (cd dist && sha256sum * > SHA256SUMS)
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with: {name: "midgard-${{ inputs.tag }}", path: dist}
