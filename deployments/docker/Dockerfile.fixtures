@@ -8,7 +8,7 @@ COPY examples/echo ./examples/echo
 WORKDIR /src/examples/echo
 RUN CGO_ENABLED=0 go build -trimpath -o /out/echo .
 
-FROM rust:1.97-bookworm AS rust-build
+FROM rust:1.98-bookworm AS rust-build
 WORKDIR /src
 COPY Cargo.toml Cargo.lock rust-toolchain.toml ./
 COPY crates ./crates
