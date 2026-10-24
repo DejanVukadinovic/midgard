@@ -1,7 +1,7 @@
 http:
   routers:
     platform:
-      rule: "Host(`platform.localhost`) && (PathPrefix(`/v0`) || PathPrefix(`/health`))"   # /metrics is NOT routed
+      rule: "(Host(`platform.localhost`) || Host(`localhost`) || Host(`127.0.0.1`)) && (PathPrefix(`/v0`) || PathPrefix(`/health`))"   # /metrics is NOT routed
       entryPoints: [web]
       service: platform-core
   services:
