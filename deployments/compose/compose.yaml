@@ -204,8 +204,7 @@ services:
     restart: "no"
     networks: [platform]
     profiles: [zitadel, test]
-    image: midgard/tools:dev
-    build: {context: ../.., dockerfile: deployments/docker/Dockerfile.fixtures, target: tools}
+    image: midgard/tools:dev     # built once by the root compose.yaml's `bootstrap` service (two builds of one tag race)
     user: "0"                      # writes the shared volume; files are made world-readable inside it
     command: ["scripts/zitadel-bootstrap.sh"]
     depends_on: {zitadel: {condition: service_healthy}}
