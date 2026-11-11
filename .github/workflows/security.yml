@@ -11,7 +11,7 @@ jobs:
   secrets:
     runs-on: ubuntu-24.04
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with: {fetch-depth: 0}   # scan the full history, not only the tip
       - uses: gitleaks/gitleaks-action@v2
         env:
@@ -20,12 +20,12 @@ jobs:
   rust-deps:
     runs-on: ubuntu-24.04
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - uses: EmbarkStudios/cargo-deny-action@v2   # advisories + licenses + bans + sources
   go-deps:
     runs-on: ubuntu-24.04
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - uses: actions/setup-go@v5
         with: {go-version: "stable"}
       - run: go install golang.org/x/vuln/cmd/govulncheck@latest
@@ -34,7 +34,7 @@ jobs:
   config-and-images:
     runs-on: ubuntu-24.04
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - uses: aquasecurity/trivy-action@master   # TODO pin to a release tag/SHA (tag format 0.28.0 did not resolve)
         with:
           scan-type: config

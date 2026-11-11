@@ -23,7 +23,7 @@ jobs:
         options: >-
           --health-cmd "pg_isready -U midgard" --health-interval 5s --health-timeout 3s --health-retries 20
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - uses: dtolnay/rust-toolchain@master
         with: {toolchain: "1.97.0", components: "rustfmt, clippy"}
       - uses: Swatinem/rust-cache@v2
@@ -39,7 +39,7 @@ jobs:
   go:
     runs-on: ubuntu-24.04
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - uses: actions/setup-go@v5
         with: {go-version: "1.25"}
       - run: test -z "$(gofmt -l sdk/go examples/sample-application examples/echo)"
@@ -52,7 +52,7 @@ jobs:
   contracts:
     runs-on: ubuntu-24.04
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - uses: dtolnay/rust-toolchain@master
         with: {toolchain: "1.97.0"}
       - uses: Swatinem/rust-cache@v2
@@ -64,7 +64,7 @@ jobs:
   compose-config:
     runs-on: ubuntu-24.04
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - name: Validate Compose files and published-port policy (ENV-05)
         run: tests/acceptance/ports.sh
       - name: Docs command/link check
@@ -80,7 +80,7 @@ jobs:
         options: >-
           --health-cmd "pg_isready -U midgard" --health-interval 5s --health-timeout 3s --health-retries 20
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - uses: dtolnay/rust-toolchain@master
         with: {toolchain: "1.97.0"}
       - uses: actions/setup-go@v5
@@ -107,7 +107,7 @@ jobs:
         options: >-
           --health-cmd "pg_isready -U midgard" --health-interval 5s --health-timeout 3s --health-retries 20
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - uses: dtolnay/rust-toolchain@master
         with: {toolchain: "1.97.0"}
       - uses: actions/setup-go@v5
@@ -134,7 +134,7 @@ jobs:
         options: >-
           --health-cmd "pg_isready -U midgard" --health-interval 5s --health-timeout 3s --health-retries 20
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - uses: dtolnay/rust-toolchain@master
         with: {toolchain: "1.97.0"}
       - uses: actions/setup-go@v5
@@ -156,7 +156,7 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 45
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - run: cp .env.example .env
       - run: deployments/compose/gen-dev-secrets.sh
       - run: docker compose up -d --build --wait
@@ -180,7 +180,7 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 40
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - uses: dtolnay/rust-toolchain@master
         with: {toolchain: "1.97.0"}
       - uses: actions/setup-go@v5
