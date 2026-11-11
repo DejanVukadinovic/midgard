@@ -1663,7 +1663,7 @@ version = "0.1.0"
 dependencies = [
  "anyhow",
  "axum",
- "base64 0.22.1",
+ "base64 0.23.1",
  "chrono",
  "hex",
  "platform-auth",
@@ -1724,7 +1724,7 @@ name = "platform-testkit"
 version = "0.1.0"
 dependencies = [
  "axum",
- "base64 0.22.1",
+ "base64 0.23.1",
  "jsonwebtoken",
  "p256",
  "rand_core 0.6.4",
