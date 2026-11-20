@@ -2,7 +2,7 @@
 # Build context: repository root. Synthetic v0.2 fixtures. Targets:
 #   echo   the language-independent provider/client binary (no MIDGARD library inside)
 #   tools  bootstrap + integration-test runner (curl, jq, contract-tool, echo, scripts, tests)
-FROM golang:1.26-bookworm AS go-build
+FROM golang:1.27-bookworm AS go-build
 WORKDIR /src
 COPY examples/echo ./examples/echo
 WORKDIR /src/examples/echo
